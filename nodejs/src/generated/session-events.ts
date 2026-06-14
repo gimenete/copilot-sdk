@@ -429,6 +429,16 @@ export type ElicitationCompletedAction =
  */
 export type ElicitationCompletedContent = (string | number | boolean | string[]) | undefined;
 /**
+ * How the pending OAuth request was completed
+ */
+export type McpOauthCompletedOutcome =
+  /** The pending OAuth request was resolved with a host-provided token/provider. */
+  | "token"
+  /** The pending OAuth request was cancelled or declined without a token/provider. */
+  | "cancelled"
+  /** The pending OAuth request timed out before any client responded. */
+  | "timeout";
+/**
  * Source-defined JSON payload for the custom notification
  */
 export type CustomNotificationPayload =
@@ -5778,7 +5788,7 @@ export interface McpOauthRequiredEvent {
  */
 export interface McpOauthRequiredData {
   /**
-   * Unique identifier for this OAuth request; used to respond via session.respondToMcpOAuth()
+   * Unique identifier for this OAuth request; used to respond via session.mcp.oauth.handlePendingRequest
    */
   requestId: string;
   /**
@@ -5790,6 +5800,7 @@ export interface McpOauthRequiredData {
    */
   serverUrl: string;
   staticClientConfig?: McpOauthRequiredStaticClientConfig;
+  wwwAuthenticateParams: McpOauthRequiredWwwAuthenticateParams;
 }
 /**
  * Static OAuth client configuration, if the server specifies one
@@ -5807,6 +5818,23 @@ export interface McpOauthRequiredStaticClientConfig {
    * Whether this is a public OAuth client
    */
   publicClient?: boolean;
+}
+/**
+ * Parsed parameters from the WWW-Authenticate header that the SDK host uses for RFC 9728 protected-resource metadata discovery.
+ */
+export interface McpOauthRequiredWwwAuthenticateParams {
+  /**
+   * Parsed OAuth error from the WWW-Authenticate header, if present
+   */
+  error?: string;
+  /**
+   * Parsed resource_metadata URL from the WWW-Authenticate header
+   */
+  resourceMetadataUrl: string;
+  /**
+   * Parsed OAuth scope from the WWW-Authenticate header, if present
+   */
+  scope?: string;
 }
 /**
  * Session event "mcp.oauth_completed". MCP OAuth request completion notification
@@ -5842,6 +5870,7 @@ export interface McpOauthCompletedEvent {
  * MCP OAuth request completion notification
  */
 export interface McpOauthCompletedData {
+  outcome: McpOauthCompletedOutcome;
   /**
    * Request ID of the resolved OAuth request
    */

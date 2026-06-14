@@ -34,14 +34,16 @@ public final class McpOauthRequiredEvent extends SessionEvent {
     @JsonIgnoreProperties(ignoreUnknown = true)
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record McpOauthRequiredEventData(
-        /** Unique identifier for this OAuth request; used to respond via session.respondToMcpOAuth() */
+        /** Unique identifier for this OAuth request; used to respond via session.mcp.oauth.handlePendingRequest */
         @JsonProperty("requestId") String requestId,
         /** Display name of the MCP server that requires OAuth */
         @JsonProperty("serverName") String serverName,
         /** URL of the MCP server that requires OAuth */
         @JsonProperty("serverUrl") String serverUrl,
         /** Static OAuth client configuration, if the server specifies one */
-        @JsonProperty("staticClientConfig") McpOauthRequiredStaticClientConfig staticClientConfig
+        @JsonProperty("staticClientConfig") McpOauthRequiredStaticClientConfig staticClientConfig,
+        /** Parsed parameters from the WWW-Authenticate header that the SDK host uses for RFC 9728 protected-resource metadata discovery. */
+        @JsonProperty("wwwAuthenticateParams") McpOauthRequiredWwwAuthenticateParams wwwAuthenticateParams
     ) {
     }
 }

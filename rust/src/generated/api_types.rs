@@ -292,6 +292,9 @@ pub mod rpc_methods {
     pub const SESSION_MCP_ISSERVERRUNNING: &str = "session.mcp.isServerRunning";
     /// `session.mcp.oauth.respond`
     pub const SESSION_MCP_OAUTH_RESPOND: &str = "session.mcp.oauth.respond";
+    /// `session.mcp.oauth.handlePendingRequest`
+    pub const SESSION_MCP_OAUTH_HANDLEPENDINGREQUEST: &str =
+        "session.mcp.oauth.handlePendingRequest";
     /// `session.mcp.oauth.login`
     pub const SESSION_MCP_OAUTH_LOGIN: &str = "session.mcp.oauth.login";
     /// `session.mcp.apps.readResource`
@@ -4077,6 +4080,79 @@ pub struct McpListToolsResult {
     pub tools: Vec<McpTools>,
 }
 
+/// Schema for the `McpOauthPendingRequestResponseToken` type.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpOauthPendingRequestResponseToken {
+    /// Access token acquired by the SDK host
+    pub access_token: String,
+    /// Token lifetime in seconds, if known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expires_in: Option<i64>,
+    /// Supplies a host-acquired OAuth access token.
+    pub kind: McpOauthPendingRequestResponseTokenKind,
+    /// Refresh token supplied by the host, if available.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refresh_token: Option<String>,
+    /// OAuth token type. Defaults to Bearer when omitted.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub token_type: Option<String>,
+}
+
+/// Schema for the `McpOauthPendingRequestResponseCancelled` type.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpOauthPendingRequestResponseCancelled {
+    /// Declines or cancels the pending OAuth request.
+    pub kind: McpOauthPendingRequestResponseCancelledKind,
+}
+
+/// Pending MCP OAuth request ID and host-provided token or cancellation response.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpOauthHandlePendingRequest {
+    /// OAuth request identifier for the pending request.
+    pub request_id: RequestId,
+    /// Host response to the pending OAuth request.
+    pub result: McpOauthPendingRequestResponse,
+}
+
+/// Indicates whether the pending MCP OAuth response was accepted.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpOauthHandlePendingResult {
+    /// Whether the response was accepted. False if the request was unknown, timed out, or already resolved.
+    pub success: bool,
+}
+
 /// Remote MCP server name and optional overrides controlling reauthentication, OAuth client display name, and the callback success-page copy.
 ///
 /// <div class="warning">
@@ -4132,7 +4208,7 @@ pub(crate) struct McpOauthRespondRequest {
     #[doc(hidden)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) provider: Option<serde_json::Value>,
-    /// OAuth request identifier from mcp.oauth_required
+    /// OAuth request identifier for the pending request.
     pub request_id: RequestId,
 }
 
@@ -4462,6 +4538,21 @@ pub struct McpStopServerRequest {
 pub(crate) struct McpUnregisterExternalClientRequest {
     /// Server name of the external client to unregister
     pub server_name: String,
+}
+
+/// Memory configuration for this session.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MemoryConfiguration {
+    /// Whether memory is enabled for the session.
+    pub enabled: bool,
 }
 
 /// Model identifier and token limits used to compute the context-info breakdown.
@@ -7406,7 +7497,7 @@ pub struct QueueRemoveMostRecentResult {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RegisterEventInterestParams {
-    /// The event type the consumer wants the runtime to treat as 'observed' for behavior-switching gating. Some runtime code paths inspect whether any consumer is interested in a specific event type and choose a different implementation accordingly (e.g. `mcp.oauth_required`: when interest is registered the runtime delegates the full interactive OAuth flow to the consumer; when no interest is registered the runtime installs a browserless fallback that silently reuses cached tokens). SDK clients that long-poll events do NOT automatically appear as listeners to these gating checks — they must explicitly call `registerInterest` for each event type they want the runtime to count as having a consumer. Multiple registrations for the same event type from the same or different consumers are tracked independently and must each be released. See: `mcp.oauth_required`, `sampling.requested`, `auto_mode_switch.requested`, `user_input.requested`, `elicitation.requested`, `command.queued`, `exit_plan_mode.requested`.
+    /// The event type the consumer wants the runtime to treat as observed for behavior-switching gating. Multiple registrations for the same event type from the same or different consumers are tracked independently and must each be released.
     pub event_type: String,
 }
 
@@ -9129,6 +9220,9 @@ pub struct SessionOpenOptions {
     /// Identifier sent to LSP-style integrations.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lsp_client_name: Option<String>,
+    /// Memory configuration for this session.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub memory: Option<MemoryConfiguration>,
     /// Initial model identifier.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
@@ -14152,6 +14246,21 @@ pub struct SessionMcpIsServerRunningResult {
 #[serde(rename_all = "camelCase")]
 pub struct SessionMcpOauthRespondResult {}
 
+/// Indicates whether the pending MCP OAuth response was accepted.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionMcpOauthHandlePendingRequestResult {
+    /// Whether the response was accepted. False if the request was unknown, timed out, or already resolved.
+    pub success: bool,
+}
+
 /// OAuth authorization URL the caller should open, or empty when cached tokens already authenticated the server.
 ///
 /// <div class="warning">
@@ -16932,6 +17041,37 @@ pub enum McpAppsSetHostContextDetailsTheme {
     #[default]
     #[serde(other)]
     Unknown,
+}
+
+/// Supplies a host-acquired OAuth access token.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum McpOauthPendingRequestResponseTokenKind {
+    #[serde(rename = "token")]
+    #[default]
+    Token,
+}
+
+/// Declines or cancels the pending OAuth request.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum McpOauthPendingRequestResponseCancelledKind {
+    #[serde(rename = "cancelled")]
+    #[default]
+    Cancelled,
+}
+
+/// Host response to the pending OAuth request.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum McpOauthPendingRequestResponse {
+    Token(McpOauthPendingRequestResponseToken),
+    Cancelled(McpOauthPendingRequestResponseCancelled),
 }
 
 /// Outcome of the sampling inference. 'success' produced a response; 'failure' encountered an error (including agent-side rejection by content filter or criteria); 'cancelled' the caller cancelled this execution via cancelSamplingExecution.

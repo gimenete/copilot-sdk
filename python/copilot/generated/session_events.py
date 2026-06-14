@@ -2195,21 +2195,31 @@ class McpAppToolCallCompleteToolMetaUI:
         return result
 
 
+class McpOauthCompletedOutcome(Enum):
+    CANCELLED = "cancelled"
+    TIMEOUT = "timeout"
+    TOKEN = "token"
+
+
 @dataclass
 class McpOauthCompletedData:
     "MCP OAuth request completion notification"
+    outcome: McpOauthCompletedOutcome
     request_id: str
 
     @staticmethod
     def from_dict(obj: Any) -> "McpOauthCompletedData":
         assert isinstance(obj, dict)
+        outcome = parse_enum(McpOauthCompletedOutcome, obj.get("outcome"))
         request_id = from_str(obj.get("requestId"))
         return McpOauthCompletedData(
+            outcome=outcome,
             request_id=request_id,
         )
 
     def to_dict(self) -> dict:
         result: dict = {}
+        result["outcome"] = to_enum(McpOauthCompletedOutcome, self.outcome)
         result["requestId"] = from_str(self.request_id)
         return result
 
@@ -2220,6 +2230,7 @@ class McpOauthRequiredData:
     request_id: str
     server_name: str
     server_url: str
+    www_authenticate_params: McpOauthRequiredWwwAuthenticateParams
     static_client_config: McpOauthRequiredStaticClientConfig | None = None
 
     @staticmethod
@@ -2228,11 +2239,13 @@ class McpOauthRequiredData:
         request_id = from_str(obj.get("requestId"))
         server_name = from_str(obj.get("serverName"))
         server_url = from_str(obj.get("serverUrl"))
+        www_authenticate_params = McpOauthRequiredWwwAuthenticateParams.from_dict(obj.get("wwwAuthenticateParams"))
         static_client_config = from_union([from_none, McpOauthRequiredStaticClientConfig.from_dict], obj.get("staticClientConfig"))
         return McpOauthRequiredData(
             request_id=request_id,
             server_name=server_name,
             server_url=server_url,
+            www_authenticate_params=www_authenticate_params,
             static_client_config=static_client_config,
         )
 
@@ -2241,6 +2254,7 @@ class McpOauthRequiredData:
         result["requestId"] = from_str(self.request_id)
         result["serverName"] = from_str(self.server_name)
         result["serverUrl"] = from_str(self.server_url)
+        result["wwwAuthenticateParams"] = to_class(McpOauthRequiredWwwAuthenticateParams, self.www_authenticate_params)
         if self.static_client_config is not None:
             result["staticClientConfig"] = from_union([from_none, lambda x: to_class(McpOauthRequiredStaticClientConfig, x)], self.static_client_config)
         return result
@@ -2276,7 +2290,36 @@ class McpOauthRequiredStaticClientConfig:
 
 
 @dataclass
-class McpServersLoadedServer:
+class McpOauthRequiredWwwAuthenticateParams:
+    "Parsed parameters from the WWW-Authenticate header that the SDK host uses for RFC 9728 protected-resource metadata discovery."
+    resource_metadata_url: str
+    error: str | None = None
+    scope: str | None = None
+
+    @staticmethod
+    def from_dict(obj: Any) -> "McpOauthRequiredWwwAuthenticateParams":
+        assert isinstance(obj, dict)
+        resource_metadata_url = from_str(obj.get("resourceMetadataUrl"))
+        error = from_union([from_none, from_str], obj.get("error"))
+        scope = from_union([from_none, from_str], obj.get("scope"))
+        return McpOauthRequiredWwwAuthenticateParams(
+            resource_metadata_url=resource_metadata_url,
+            error=error,
+            scope=scope,
+        )
+
+    def to_dict(self) -> dict:
+        result: dict = {}
+        result["resourceMetadataUrl"] = from_str(self.resource_metadata_url)
+        if self.error is not None:
+            result["error"] = from_union([from_none, from_str], self.error)
+        if self.scope is not None:
+            result["scope"] = from_union([from_none, from_str], self.scope)
+        return result
+
+
+@dataclass
+class MCPServersLoadedServer:
     "Schema for the `McpServersLoadedServer` type."
     name: str
     status: McpServerStatus
@@ -7400,8 +7443,10 @@ __all__ = [
     "McpAppToolCallCompleteToolMeta",
     "McpAppToolCallCompleteToolMetaUI",
     "McpOauthCompletedData",
+    "McpOauthCompletedOutcome",
     "McpOauthRequiredData",
     "McpOauthRequiredStaticClientConfig",
+    "McpOauthRequiredWwwAuthenticateParams",
     "McpServerSource",
     "McpServerStatus",
     "McpServerTransport",

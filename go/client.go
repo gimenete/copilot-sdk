@@ -732,6 +732,7 @@ func (c *Client) CreateSession(ctx context.Context, config *SessionConfig) (*Ses
 
 		s.registerTools(config.Tools)
 		s.registerPermissionHandler(config.OnPermissionRequest)
+		s.registerMCPAuthHandler(config.OnMCPAuthRequest)
 		if config.OnUserInputRequest != nil {
 			s.registerUserInputHandler(config.OnUserInputRequest)
 		}
@@ -799,6 +800,14 @@ func (c *Client) CreateSession(ctx context.Context, config *SessionConfig) (*Ses
 		}
 		session = s
 		registeredSessionID = localSessionID
+		if config.OnMCPAuthRequest != nil {
+			if _, err := c.client.Request("session.eventLog.registerInterest", map[string]any{
+				"sessionId": localSessionID,
+				"eventType": "mcp.oauth_required",
+			}); err != nil {
+				return nil, err
+			}
+		}
 	}
 
 	// For the server-assigned (cloud) path, register the session
@@ -859,6 +868,15 @@ func (c *Client) CreateSession(ctx context.Context, config *SessionConfig) (*Ses
 		delete(c.sessions, registeredSessionID)
 		c.sessionsMux.Unlock()
 		return nil, fmt.Errorf("session.create returned sessionId %s but the caller requested %s", response.SessionID, localSessionID)
+	}
+	// Local IDs registered before create; server-assigned IDs can only register now.
+	if localSessionID == "" && config.OnMCPAuthRequest != nil {
+		if _, err := c.client.Request("session.eventLog.registerInterest", map[string]any{
+			"sessionId": session.SessionID,
+			"eventType": "mcp.oauth_required",
+		}); err != nil {
+			return nil, err
+		}
 	}
 
 	session.workspacePath = response.WorkspacePath
@@ -1024,6 +1042,7 @@ func (c *Client) ResumeSessionWithOptions(ctx context.Context, sessionID string,
 
 	session.registerTools(config.Tools)
 	session.registerPermissionHandler(config.OnPermissionRequest)
+	session.registerMCPAuthHandler(config.OnMCPAuthRequest)
 	if config.OnUserInputRequest != nil {
 		session.registerUserInputHandler(config.OnUserInputRequest)
 	}
@@ -1055,6 +1074,17 @@ func (c *Client) ResumeSessionWithOptions(ctx context.Context, sessionID string,
 	c.sessionsMux.Lock()
 	c.sessions[sessionID] = session
 	c.sessionsMux.Unlock()
+	if config.OnMCPAuthRequest != nil {
+		if _, err := c.client.Request("session.eventLog.registerInterest", map[string]any{
+			"sessionId": sessionID,
+			"eventType": "mcp.oauth_required",
+		}); err != nil {
+			c.sessionsMux.Lock()
+			delete(c.sessions, sessionID)
+			c.sessionsMux.Unlock()
+			return nil, err
+		}
+	}
 
 	if c.options.SessionFS != nil {
 		if config.CreateSessionFSProvider == nil {

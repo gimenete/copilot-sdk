@@ -1046,7 +1046,8 @@ export class CopilotClient {
                 sessionId,
                 this.connection!,
                 undefined,
-                this.onGetTraceContext
+                this.onGetTraceContext,
+                { mcpAuthHandler: config.onMcpAuthRequest }
             );
             s.registerTools(config.tools);
             s.registerCanvases(config.canvases);
@@ -1184,6 +1185,12 @@ export class CopilotClient {
                 session = initializeSession(returnedSessionId);
                 registeredId = returnedSessionId;
             }
+            if (config.onMcpAuthRequest) {
+                await this.connection!.sendRequest("session.eventLog.registerInterest", {
+                    sessionId: returnedSessionId,
+                    eventType: "mcp.oauth_required",
+                });
+            }
             session["_workspacePath"] = workspacePath;
             session.setCapabilities(capabilities);
 
@@ -1233,7 +1240,8 @@ export class CopilotClient {
             sessionId,
             this.connection!,
             undefined,
-            this.onGetTraceContext
+            this.onGetTraceContext,
+            { mcpAuthHandler: config.onMcpAuthRequest }
         );
         session.registerTools(config.tools);
         session.registerCanvases(config.canvases);
@@ -1270,6 +1278,12 @@ export class CopilotClient {
         }
         this.sessions.set(sessionId, session);
         this.setupSessionFs(session, config);
+        if (config.onMcpAuthRequest) {
+            await this.connection!.sendRequest("session.eventLog.registerInterest", {
+                sessionId,
+                eventType: "mcp.oauth_required",
+            });
+        }
 
         const toolFilterOptions = this.resolveToolFilterOptions(config);
 

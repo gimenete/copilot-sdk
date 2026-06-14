@@ -628,6 +628,16 @@ export type McpServerConfigHttpOauthGrantType =
   /** Headless client credentials flow using the configured OAuth client. */
   | "client_credentials";
 /**
+ * Host response to the pending OAuth request.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "McpOauthPendingRequestResponse".
+ */
+/** @experimental */
+export type McpOauthPendingRequestResponse =
+  | McpOauthPendingRequestResponseToken
+  | McpOauthPendingRequestResponseCancelled;
+/**
  * Outcome of the sampling inference. 'success' produced a response; 'failure' encountered an error (including agent-side rejection by content filter or criteria); 'cancelled' the caller cancelled this execution via cancelSamplingExecution.
  *
  * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
@@ -5091,6 +5101,75 @@ export interface McpTools {
   description?: string;
 }
 /**
+ * Pending MCP OAuth request ID and host-provided token or cancellation response.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "McpOauthHandlePendingRequest".
+ */
+/** @experimental */
+export interface McpOauthHandlePendingRequest {
+  /**
+   * OAuth request identifier for the pending request.
+   */
+  requestId: string;
+  result: McpOauthPendingRequestResponse;
+}
+/**
+ * Schema for the `McpOauthPendingRequestResponseToken` type.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "McpOauthPendingRequestResponseToken".
+ */
+/** @experimental */
+export interface McpOauthPendingRequestResponseToken {
+  /**
+   * Supplies a host-acquired OAuth access token.
+   */
+  kind: "token";
+  /**
+   * Access token acquired by the SDK host
+   */
+  accessToken: string;
+  /**
+   * OAuth token type. Defaults to Bearer when omitted.
+   */
+  tokenType?: string;
+  /**
+   * Refresh token supplied by the host, if available.
+   */
+  refreshToken?: string;
+  /**
+   * Token lifetime in seconds, if known.
+   */
+  expiresIn?: number;
+}
+/**
+ * Schema for the `McpOauthPendingRequestResponseCancelled` type.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "McpOauthPendingRequestResponseCancelled".
+ */
+/** @experimental */
+export interface McpOauthPendingRequestResponseCancelled {
+  /**
+   * Declines or cancels the pending OAuth request.
+   */
+  kind: "cancelled";
+}
+/**
+ * Indicates whether the pending MCP OAuth response was accepted.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "McpOauthHandlePendingResult".
+ */
+/** @experimental */
+export interface McpOauthHandlePendingResult {
+  /**
+   * Whether the response was accepted. False if the request was unknown, timed out, or already resolved.
+   */
+  success: boolean;
+}
+/**
  * Remote MCP server name and optional overrides controlling reauthentication, OAuth client display name, and the callback success-page copy.
  *
  * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
@@ -5138,7 +5217,7 @@ export interface McpOauthLoginResult {
 /** @internal */
 export interface McpOauthRespondRequest {
   /**
-   * OAuth request identifier from mcp.oauth_required
+   * OAuth request identifier for the pending request.
    */
   requestId: string;
   /**
@@ -5382,6 +5461,19 @@ export interface McpUnregisterExternalClientRequest {
    * Server name of the external client to unregister
    */
   serverName: string;
+}
+/**
+ * Memory configuration for this session.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "MemoryConfiguration".
+ */
+/** @experimental */
+export interface MemoryConfiguration {
+  /**
+   * Whether memory is enabled for the session.
+   */
+  enabled: boolean;
 }
 /**
  * Model identifier and token limits used to compute the context-info breakdown.
@@ -8048,7 +8140,7 @@ export interface QueueRemoveMostRecentResult {
 /** @experimental */
 export interface RegisterEventInterestParams {
   /**
-   * The event type the consumer wants the runtime to treat as 'observed' for behavior-switching gating. Some runtime code paths inspect whether any consumer is interested in a specific event type and choose a different implementation accordingly (e.g. `mcp.oauth_required`: when interest is registered the runtime delegates the full interactive OAuth flow to the consumer; when no interest is registered the runtime installs a browserless fallback that silently reuses cached tokens). SDK clients that long-poll events do NOT automatically appear as listeners to these gating checks — they must explicitly call `registerInterest` for each event type they want the runtime to count as having a consumer. Multiple registrations for the same event type from the same or different consumers are tracked independently and must each be released. See: `mcp.oauth_required`, `sampling.requested`, `auto_mode_switch.requested`, `user_input.requested`, `elicitation.requested`, `command.queued`, `exit_plan_mode.requested`.
+   * The event type the consumer wants the runtime to treat as observed for behavior-switching gating. Multiple registrations for the same event type from the same or different consumers are tracked independently and must each be released.
    */
   eventType: string;
 }
@@ -9736,6 +9828,7 @@ export interface SessionOpenOptions {
    * @experimental
    */
   additionalContentExclusionPolicies?: SessionOpenOptionsAdditionalContentExclusionPolicy[];
+  memory?: MemoryConfiguration;
   /**
    * Capabilities enabled for this session.
    */
@@ -13830,6 +13923,15 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
             /** @experimental */
             oauth: {
                 /**
+                 * Resolves a pending MCP OAuth request with a host-provided token or cancellation.
+                 *
+                 * @param params Pending MCP OAuth request ID and host-provided token or cancellation response.
+                 *
+                 * @returns Indicates whether the pending MCP OAuth response was accepted.
+                 */
+                handlePendingRequest: async (params: McpOauthHandlePendingRequest): Promise<McpOauthHandlePendingResult> =>
+                    connection.sendRequest("session.mcp.oauth.handlePendingRequest", { sessionId, ...params }),
+                /**
                  * Starts OAuth authentication for a remote MCP server.
                  *
                  * @param params Remote MCP server name and optional overrides controlling reauthentication, OAuth client display name, and the callback success-page copy.
@@ -14673,7 +14775,7 @@ export function createInternalSessionRpc(connection: MessageConnection, sessionI
             /** @experimental */
             oauth: {
                 /**
-                 * Responds to a pending MCP OAuth provider request. Marked internal because the `provider` argument is an in-process OAuthClientProvider instance that cannot be carried over the wire; the public OAuth surface will route the response through a wire-clean handshake once the CLI moves on top of the SDK.
+                 * Responds to a pending MCP OAuth request with an in-process provider. Conceptually similar to handlePendingRequest, but marked internal because this legacy CLI-only path takes a live OAuthClientProvider instance that cannot be carried over the wire. Once the CLI is replatformed on the SDK and can use handlePendingRequest, this API should be removed.
                  *
                  * @param params MCP OAuth request id and optional provider response.
                  *

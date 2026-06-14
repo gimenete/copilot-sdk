@@ -645,6 +645,8 @@ func (*MCPAppToolCallCompleteData) Type() SessionEventType {
 
 // MCP OAuth request completion notification
 type MCPOauthCompletedData struct {
+	// How the pending OAuth request was completed
+	Outcome MCPOauthCompletedOutcome `json:"outcome"`
 	// Request ID of the resolved OAuth request
 	RequestID string `json:"requestId"`
 }
@@ -688,7 +690,7 @@ func (*SessionRemoteSteerableChangedData) Type() SessionEventType {
 
 // OAuth authentication request for an MCP server
 type MCPOauthRequiredData struct {
-	// Unique identifier for this OAuth request; used to respond via session.respondToMcpOAuth()
+	// Unique identifier for this OAuth request; used to respond via session.mcp.oauth.handlePendingRequest
 	RequestID string `json:"requestId"`
 	// Display name of the MCP server that requires OAuth
 	ServerName string `json:"serverName"`
@@ -696,6 +698,8 @@ type MCPOauthRequiredData struct {
 	ServerURL string `json:"serverUrl"`
 	// Static OAuth client configuration, if the server specifies one
 	StaticClientConfig *MCPOauthRequiredStaticClientConfig `json:"staticClientConfig,omitempty"`
+	// Parsed parameters from the WWW-Authenticate header that the SDK host uses for RFC 9728 protected-resource metadata discovery.
+	WwwAuthenticateParams MCPOauthRequiredWwwAuthenticateParams `json:"wwwAuthenticateParams"`
 }
 
 func (*MCPOauthRequiredData) sessionEventData()      {}
@@ -1905,6 +1909,16 @@ type MCPOauthRequiredStaticClientConfig struct {
 	PublicClient *bool `json:"publicClient,omitempty"`
 }
 
+// Parsed parameters from the WWW-Authenticate header that the SDK host uses for RFC 9728 protected-resource metadata discovery.
+type MCPOauthRequiredWwwAuthenticateParams struct {
+	// Parsed OAuth error from the WWW-Authenticate header, if present
+	Error *string `json:"error,omitempty"`
+	// Parsed resource_metadata URL from the WWW-Authenticate header
+	ResourceMetadataURL string `json:"resourceMetadataUrl"`
+	// Parsed OAuth scope from the WWW-Authenticate header, if present
+	Scope *string `json:"scope,omitempty"`
+}
+
 // Schema for the `McpServersLoadedServer` type.
 type MCPServersLoadedServer struct {
 	// Error message if the server failed to connect
@@ -3059,6 +3073,18 @@ const (
 	HandoffSourceTypeLocal HandoffSourceType = "local"
 	// The handoff originated from a remote session.
 	HandoffSourceTypeRemote HandoffSourceType = "remote"
+)
+
+// How the pending OAuth request was completed
+type MCPOauthCompletedOutcome string
+
+const (
+	// The pending OAuth request was cancelled or declined without a token/provider.
+	MCPOauthCompletedOutcomeCancelled MCPOauthCompletedOutcome = "cancelled"
+	// The pending OAuth request timed out before any client responded.
+	MCPOauthCompletedOutcomeTimeout MCPOauthCompletedOutcome = "timeout"
+	// The pending OAuth request was resolved with a host-provided token/provider.
+	MCPOauthCompletedOutcomeToken MCPOauthCompletedOutcome = "token"
 )
 
 // Optional non-default OAuth grant type. When set to 'client_credentials', the OAuth flow runs headlessly using the client_id + keychain-stored secret (no browser, no callback server).

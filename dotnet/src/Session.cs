@@ -62,6 +62,7 @@ public sealed partial class CopilotSession : IAsyncDisposable
     private readonly CopilotClient _parentClient;
 
     private volatile Func<PermissionRequest, PermissionInvocation, Task<PermissionDecision>>? _permissionHandler;
+    private volatile Func<McpAuthContext, Task<McpAuthResult?>>? _mcpAuthHandler;
     private volatile Func<UserInputRequest, UserInputInvocation, Task<UserInputResponse>>? _userInputHandler;
     private volatile Func<ElicitationContext, Task<ElicitationResult>>? _elicitationHandler;
     private volatile Func<ExitPlanModeRequest, ExitPlanModeInvocation, Task<ExitPlanModeResult>>? _exitPlanModeHandler;
@@ -561,6 +562,11 @@ public sealed partial class CopilotSession : IAsyncDisposable
         _permissionHandler = handler;
     }
 
+    internal void RegisterMcpAuthHandler(Func<McpAuthContext, Task<McpAuthResult?>>? handler)
+    {
+        _mcpAuthHandler = handler;
+    }
+
     /// <summary>
     /// Handles a permission request from the Copilot CLI.
     /// </summary>
@@ -636,6 +642,34 @@ public sealed partial class CopilotSession : IAsyncDisposable
                         break;
                     }
 
+                case McpOauthRequiredEvent authEvent:
+                    {
+                        var data = authEvent.Data;
+                        if (string.IsNullOrEmpty(data.RequestId))
+                            return;
+
+                        var handler = _mcpAuthHandler;
+                        if (handler is null)
+                        {
+                            _logger.LogWarning(
+                                "Received MCP OAuth request without a registered MCP auth handler. " +
+                                "SessionId={SessionId}, RequestId={RequestId}",
+                                SessionId,
+                                data.RequestId);
+                            return;
+                        }
+
+                        await ExecuteMcpAuthAndRespondAsync(data.RequestId, new McpAuthContext
+                        {
+                            SessionId = SessionId,
+                            ServerName = data.ServerName,
+                            ServerUrl = data.ServerUrl,
+                            WwwAuthenticateParams = data.WwwAuthenticateParams,
+                            StaticClientConfig = data.StaticClientConfig
+                        }, handler);
+                        break;
+                    }
+
                 case CommandExecuteEvent cmdEvent:
                     {
                         var data = cmdEvent.Data;
@@ -702,6 +736,40 @@ public sealed partial class CopilotSession : IAsyncDisposable
                 dispatchTimestamp,
                 SessionId,
                 sessionEvent.Type);
+        }
+    }
+
+    private async Task ExecuteMcpAuthAndRespondAsync(
+        string requestId,
+        McpAuthContext context,
+        Func<McpAuthContext, Task<McpAuthResult?>> handler)
+    {
+        try
+        {
+            var result = await handler(context);
+            McpOauthPendingRequestResponse response =
+                result is { Cancelled: false, Token: { } token }
+                    ? new McpOauthPendingRequestResponseToken
+                    {
+                        AccessToken = token.AccessToken,
+                        TokenType = token.TokenType,
+                        RefreshToken = token.RefreshToken,
+                        ExpiresIn = token.ExpiresIn
+                    }
+                    : new McpOauthPendingRequestResponseCancelled();
+
+            await Rpc.Mcp.Oauth.HandlePendingRequestAsync(requestId, response);
+        }
+        catch (Exception)
+        {
+            try
+            {
+                await Rpc.Mcp.Oauth.HandlePendingRequestAsync(requestId, new McpOauthPendingRequestResponseCancelled());
+            }
+            catch (Exception rpcEx) when (rpcEx is IOException or ObjectDisposedException)
+            {
+                // Connection lost or RPC error — nothing we can do.
+            }
         }
     }
 

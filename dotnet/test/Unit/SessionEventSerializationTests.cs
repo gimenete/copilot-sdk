@@ -158,6 +158,10 @@ public class SessionEventSerializationTests
                         GrantType = "client_credentials",
                         PublicClient = false,
                     },
+                    WwwAuthenticateParams = new McpOauthRequiredWwwAuthenticateParams
+                    {
+                        ResourceMetadataUrl = "https://example.com/.well-known/oauth-protected-resource",
+                    },
                 },
             },
             "mcp.oauth_required"

@@ -4325,7 +4325,7 @@ pub struct SessionRpcMcpOauth<'a> {
 }
 
 impl<'a> SessionRpcMcpOauth<'a> {
-    /// Responds to a pending MCP OAuth provider request. Marked internal because the `provider` argument is an in-process OAuthClientProvider instance that cannot be carried over the wire; the public OAuth surface will route the response through a wire-clean handshake once the CLI moves on top of the SDK.
+    /// Responds to a pending MCP OAuth request with an in-process provider. Conceptually similar to handlePendingRequest, but marked internal because this legacy CLI-only path takes a live OAuthClientProvider instance that cannot be carried over the wire. Once the CLI is replatformed on the SDK and can use handlePendingRequest, this API should be removed.
     ///
     /// Wire method: `session.mcp.oauth.respond`.
     ///
@@ -4354,6 +4354,42 @@ impl<'a> SessionRpcMcpOauth<'a> {
             .session
             .client()
             .call(rpc_methods::SESSION_MCP_OAUTH_RESPOND, Some(wire_params))
+            .await?;
+        Ok(serde_json::from_value(_value)?)
+    }
+
+    /// Resolves a pending MCP OAuth request with a host-provided token or cancellation.
+    ///
+    /// Wire method: `session.mcp.oauth.handlePendingRequest`.
+    ///
+    /// # Parameters
+    ///
+    /// * `params` - Pending MCP OAuth request ID and host-provided token or cancellation response.
+    ///
+    /// # Returns
+    ///
+    /// Indicates whether the pending MCP OAuth response was accepted.
+    ///
+    /// <div class="warning">
+    ///
+    /// **Experimental.** This API is part of an experimental wire-protocol surface
+    /// and may change or be removed in future SDK or CLI releases. Pin both the
+    /// SDK and CLI versions if your code depends on it.
+    ///
+    /// </div>
+    pub async fn handle_pending_request(
+        &self,
+        params: McpOauthHandlePendingRequest,
+    ) -> Result<McpOauthHandlePendingResult, Error> {
+        let mut wire_params = serde_json::to_value(params)?;
+        wire_params["sessionId"] = serde_json::Value::String(self.session.id().to_string());
+        let _value = self
+            .session
+            .client()
+            .call(
+                rpc_methods::SESSION_MCP_OAUTH_HANDLEPENDINGREQUEST,
+                Some(wire_params),
+            )
             .await?;
         Ok(serde_json::from_value(_value)?)
     }

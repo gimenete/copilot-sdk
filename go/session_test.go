@@ -60,6 +60,110 @@ func TestSession_SetModelOmitsContextTierWhenUnset(t *testing.T) {
 	}
 }
 
+func TestSession_MCPAuthRequestSendsHostToken(t *testing.T) {
+	stdinR, stdinW := io.Pipe()
+	stdoutR, stdoutW := io.Pipe()
+	defer stdinR.Close()
+	defer stdinW.Close()
+	defer stdoutR.Close()
+	defer stdoutW.Close()
+
+	client := jsonrpc2.NewClient(stdinW, stdoutR)
+	client.Start()
+	defer client.Stop()
+
+	paramsCh := make(chan map[string]any, 1)
+	errCh := make(chan error, 1)
+
+	go func() {
+		frame, err := readTestJSONRPCFrame(stdinR)
+		if err != nil {
+			errCh <- err
+			return
+		}
+
+		var request struct {
+			ID     json.RawMessage `json:"id"`
+			Method string          `json:"method"`
+			Params map[string]any  `json:"params"`
+		}
+		if err := json.Unmarshal(frame, &request); err != nil {
+			errCh <- err
+			return
+		}
+		if request.Method != "session.mcp.oauth.handlePendingRequest" {
+			errCh <- fmt.Errorf("expected session.mcp.oauth.handlePendingRequest, got %s", request.Method)
+			return
+		}
+
+		paramsCh <- request.Params
+
+		response := map[string]any{
+			"jsonrpc": "2.0",
+			"id":      json.RawMessage(request.ID),
+			"result":  map[string]any{"success": true},
+		}
+		data, err := json.Marshal(response)
+		if err != nil {
+			errCh <- err
+			return
+		}
+		if _, err := fmt.Fprintf(stdoutW, "Content-Length: %d\r\n\r\n%s", len(data), data); err != nil {
+			errCh <- err
+		}
+	}()
+
+	session := &Session{
+		SessionID: "session-1",
+		client:    client,
+		RPC:       rpc.NewSessionRPC(client, "session-1"),
+	}
+	session.registerMCPAuthHandler(func(request MCPAuthRequest, invocation MCPAuthInvocation) (*MCPAuthResult, error) {
+		if invocation.SessionID != "session-1" {
+			t.Fatalf("expected invocation session-1, got %s", invocation.SessionID)
+		}
+		if request.RequestID != "oauth-request" {
+			t.Fatalf("expected oauth-request, got %s", request.RequestID)
+		}
+		tokenType := "Bearer"
+		return &MCPAuthResult{
+			Kind: "token",
+			Token: &MCPAuthToken{
+				AccessToken: "host-token",
+				TokenType:   &tokenType,
+			},
+		}, nil
+	})
+	session.handleMCPAuthRequest(MCPAuthRequest{RequestID: "oauth-request"})
+
+	select {
+	case params := <-paramsCh:
+		if params["sessionId"] != "session-1" {
+			t.Fatalf("expected sessionId session-1, got %v", params["sessionId"])
+		}
+		if params["requestId"] != "oauth-request" {
+			t.Fatalf("expected requestId oauth-request, got %v", params["requestId"])
+		}
+		result, ok := params["result"].(map[string]any)
+		if !ok {
+			t.Fatalf("expected result object, got %T", params["result"])
+		}
+		if result["kind"] != "token" {
+			t.Fatalf("expected token kind, got %v", result["kind"])
+		}
+		if result["accessToken"] != "host-token" {
+			t.Fatalf("expected accessToken host-token, got %v", result["accessToken"])
+		}
+		if result["tokenType"] != "Bearer" {
+			t.Fatalf("expected tokenType Bearer, got %v", result["tokenType"])
+		}
+	case err := <-errCh:
+		t.Fatal(err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for MCP OAuth request")
+	}
+}
+
 func captureSetModelRequest(t *testing.T, opts *SetModelOptions) map[string]any {
 	t.Helper()
 

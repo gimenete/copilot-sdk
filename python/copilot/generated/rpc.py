@@ -2575,6 +2575,34 @@ class MCPListToolsRequest:
         result["serverName"] = from_str(self.server_name)
         return result
 
+
+class MCPOauthPendingRequestResponseKind(Enum):
+    CANCELLED = "cancelled"
+    TOKEN = "token"
+
+
+# Experimental: this type is part of an experimental API and may change or be removed.
+@dataclass
+class MCPOauthHandlePendingResult:
+    """Indicates whether the pending MCP OAuth response was accepted."""
+
+    success: bool
+    """Whether the response was accepted. False if the request was unknown, timed out, or
+    already resolved.
+    """
+
+    @staticmethod
+    def from_dict(obj: Any) -> 'MCPOauthHandlePendingResult':
+        assert isinstance(obj, dict)
+        success = from_bool(obj.get("success"))
+        return MCPOauthHandlePendingResult(success)
+
+    def to_dict(self) -> dict:
+        result: dict = {}
+        result["success"] = from_bool(self.success)
+        return result
+
+
 # Experimental: this type is part of an experimental API and may change or be removed.
 @dataclass
 class MCPOauthLoginRequest:
@@ -2647,6 +2675,100 @@ class MCPOauthLoginResult:
         if self.authorization_url is not None:
             result["authorizationUrl"] = from_union([from_str, from_none], self.authorization_url)
         return result
+
+
+class MCPOauthPendingRequestResponseCancelledKind(Enum):
+    CANCELLED = "cancelled"
+
+
+@dataclass
+class MCPOauthPendingRequestResponseCancelled:
+    "Schema for the `McpOauthPendingRequestResponseCancelled` type."
+    kind: MCPOauthPendingRequestResponseCancelledKind = MCPOauthPendingRequestResponseCancelledKind.CANCELLED
+
+    @staticmethod
+    def from_dict(obj: Any) -> 'MCPOauthPendingRequestResponseCancelled':
+        assert isinstance(obj, dict)
+        kind = MCPOauthPendingRequestResponseCancelledKind(obj.get("kind"))
+        return MCPOauthPendingRequestResponseCancelled(kind)
+
+    def to_dict(self) -> dict:
+        result: dict = {}
+        result["kind"] = to_enum(MCPOauthPendingRequestResponseCancelledKind, self.kind)
+        return result
+
+
+class TypeEnum(Enum):
+    TOKEN = "token"
+
+
+@dataclass
+class MCPOauthPendingRequestResponseToken:
+    "Schema for the `McpOauthPendingRequestResponseToken` type."
+    access_token: str
+    kind: TypeEnum = TypeEnum.TOKEN
+    expires_in: int | None = None
+    refresh_token: str | None = None
+    token_type: str | None = None
+
+    @staticmethod
+    def from_dict(obj: Any) -> 'MCPOauthPendingRequestResponseToken':
+        assert isinstance(obj, dict)
+        access_token = from_str(obj.get("accessToken"))
+        kind = TypeEnum(obj.get("kind"))
+        expires_in = from_union([from_int, from_none], obj.get("expiresIn"))
+        refresh_token = from_union([from_str, from_none], obj.get("refreshToken"))
+        token_type = from_union([from_str, from_none], obj.get("tokenType"))
+        return MCPOauthPendingRequestResponseToken(access_token, kind, expires_in, refresh_token, token_type)
+
+    def to_dict(self) -> dict:
+        result: dict = {}
+        result["accessToken"] = from_str(self.access_token)
+        result["kind"] = to_enum(TypeEnum, self.kind)
+        if self.expires_in is not None:
+            result["expiresIn"] = from_union([from_int, from_none], self.expires_in)
+        if self.refresh_token is not None:
+            result["refreshToken"] = from_union([from_str, from_none], self.refresh_token)
+        if self.token_type is not None:
+            result["tokenType"] = from_union([from_str, from_none], self.token_type)
+        return result
+
+
+MCPOauthPendingRequestResponse = Union[MCPOauthPendingRequestResponseCancelled, MCPOauthPendingRequestResponseToken]
+
+
+def _load_mcp_oauth_pending_request_response(obj: Any) -> "MCPOauthPendingRequestResponse":
+    assert isinstance(obj, dict)
+    kind = obj.get("kind")
+    match kind:
+        case "cancelled": return MCPOauthPendingRequestResponseCancelled.from_dict(obj)
+        case "token": return MCPOauthPendingRequestResponseToken.from_dict(obj)
+        case _: raise ValueError(f"Unknown MCPOauthPendingRequestResponse kind: {kind!r}")
+
+
+@dataclass
+class MCPOauthHandlePendingRequest:
+    """Pending MCP OAuth request ID and host-provided token or cancellation response."""
+
+    request_id: str
+    """OAuth request identifier for the pending request."""
+
+    result: MCPOauthPendingRequestResponse
+    """Host response to the pending OAuth request."""
+
+    @staticmethod
+    def from_dict(obj: Any) -> 'MCPOauthHandlePendingRequest':
+        assert isinstance(obj, dict)
+        request_id = from_str(obj.get("requestId"))
+        result = _load_mcp_oauth_pending_request_response(obj.get("result"))
+        return MCPOauthHandlePendingRequest(request_id, result)
+
+    def to_dict(self) -> dict:
+        result: dict = {}
+        result["requestId"] = from_str(self.request_id)
+        result["result"] = to_class(cast(Any, self.result), self.result)
+        return result
+
 
 # Experimental: this type is part of an experimental API and may change or be removed.
 @dataclass
@@ -22497,6 +22619,12 @@ class McpOauthApi:
         self._client = client
         self._session_id = session_id
 
+    async def handle_pending_request(self, params: MCPOauthHandlePendingRequest, *, timeout: float | None = None) -> MCPOauthHandlePendingResult:
+        "Resolves a pending MCP OAuth request with a host-provided token or cancellation.\n\nArgs:\n    params: Pending MCP OAuth request ID and host-provided token or cancellation response.\n\nReturns:\n    Indicates whether the pending MCP OAuth response was accepted."
+        params_dict: dict[str, Any] = {k: v for k, v in params.to_dict().items() if v is not None}
+        params_dict["sessionId"] = self._session_id
+        return MCPOauthHandlePendingResult.from_dict(await self._client.request("session.mcp.oauth.handlePendingRequest", params_dict, **_timeout_kwargs(timeout)))
+
     async def login(self, params: MCPOauthLoginRequest, *, timeout: float | None = None) -> MCPOauthLoginResult:
         "Starts OAuth authentication for a remote MCP server.\n\nArgs:\n    params: Remote MCP server name and optional overrides controlling reauthentication, OAuth client display name, and the callback success-page copy.\n\nReturns:\n    OAuth authorization URL the caller should open, or empty when cached tokens already authenticated the server."
         params_dict: dict[str, Any] = {k: v for k, v in params.to_dict().items() if v is not None}
@@ -23704,8 +23832,15 @@ __all__ = [
     "MCPIsServerRunningResult",
     "MCPListToolsRequest",
     "MCPListToolsResult",
+    "MCPOauthHandlePendingRequest",
+    "MCPOauthHandlePendingResult",
     "MCPOauthLoginRequest",
     "MCPOauthLoginResult",
+    "MCPOauthPendingRequestResponse",
+    "MCPOauthPendingRequestResponseCancelled",
+    "MCPOauthPendingRequestResponseCancelledKind",
+    "MCPOauthPendingRequestResponseKind",
+    "MCPOauthPendingRequestResponseToken",
     "MCPOauthRespondRequest",
     "MCPOauthRespondResult",
     "MCPRegisterExternalClientRequest",

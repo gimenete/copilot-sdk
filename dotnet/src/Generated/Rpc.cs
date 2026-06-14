@@ -5193,9 +5193,90 @@ internal sealed class McpOauthRespondRequest
     [JsonPropertyName("provider")]
     internal JsonElement? Provider { get; set; }
 
-    /// <summary>OAuth request identifier from mcp.oauth_required.</summary>
+    /// <summary>OAuth request identifier for the pending request.</summary>
     [JsonPropertyName("requestId")]
     public string RequestId { get; set; } = string.Empty;
+
+    /// <summary>Target session identifier.</summary>
+    [JsonPropertyName("sessionId")]
+    public string SessionId { get; set; } = string.Empty;
+}
+
+/// <summary>Indicates whether the pending MCP OAuth response was accepted.</summary>
+[Experimental(Diagnostics.Experimental)]
+public sealed class McpOauthHandlePendingResult
+{
+    /// <summary>Whether the response was accepted. False if the request was unknown, timed out, or already resolved.</summary>
+    [JsonPropertyName("success")]
+    public bool Success { get; set; }
+}
+
+/// <summary>Host response to the pending OAuth request.</summary>
+/// <remarks>Polymorphic base type discriminated by <c>kind</c>.</remarks>
+[Experimental(Diagnostics.Experimental)]
+[JsonPolymorphic(
+    TypeDiscriminatorPropertyName = "kind",
+    UnknownDerivedTypeHandling = JsonUnknownDerivedTypeHandling.FallBackToBaseType)]
+[JsonDerivedType(typeof(McpOauthPendingRequestResponseToken), "token")]
+[JsonDerivedType(typeof(McpOauthPendingRequestResponseCancelled), "cancelled")]
+public partial class McpOauthPendingRequestResponse
+{
+    /// <summary>The type discriminator.</summary>
+    [JsonPropertyName("kind")]
+    public virtual string Kind { get; set; } = string.Empty;
+}
+
+
+/// <summary>Schema for the `McpOauthPendingRequestResponseToken` type.</summary>
+/// <remarks>The <c>token</c> variant of <see cref="McpOauthPendingRequestResponse"/>.</remarks>
+[Experimental(Diagnostics.Experimental)]
+public partial class McpOauthPendingRequestResponseToken : McpOauthPendingRequestResponse
+{
+    /// <inheritdoc />
+    [JsonIgnore]
+    public override string Kind => "token";
+
+    /// <summary>Access token acquired by the SDK host.</summary>
+    [JsonPropertyName("accessToken")]
+    public required string AccessToken { get; set; }
+
+    /// <summary>Token lifetime in seconds, if known.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("expiresIn")]
+    public long? ExpiresIn { get; set; }
+
+    /// <summary>Refresh token supplied by the host, if available.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("refreshToken")]
+    public string? RefreshToken { get; set; }
+
+    /// <summary>OAuth token type. Defaults to Bearer when omitted.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("tokenType")]
+    public string? TokenType { get; set; }
+}
+
+/// <summary>Schema for the `McpOauthPendingRequestResponseCancelled` type.</summary>
+/// <remarks>The <c>cancelled</c> variant of <see cref="McpOauthPendingRequestResponse"/>.</remarks>
+[Experimental(Diagnostics.Experimental)]
+public partial class McpOauthPendingRequestResponseCancelled : McpOauthPendingRequestResponse
+{
+    /// <inheritdoc />
+    [JsonIgnore]
+    public override string Kind => "cancelled";
+}
+
+/// <summary>Pending MCP OAuth request ID and host-provided token or cancellation response.</summary>
+[Experimental(Diagnostics.Experimental)]
+internal sealed class McpOauthHandlePendingRequest
+{
+    /// <summary>OAuth request identifier for the pending request.</summary>
+    [JsonPropertyName("requestId")]
+    public string RequestId { get; set; } = string.Empty;
+
+    /// <summary>Host response to the pending OAuth request.</summary>
+    [JsonPropertyName("result")]
+    public McpOauthPendingRequestResponse Result { get => field ??= new(); set; }
 
     /// <summary>Target session identifier.</summary>
     [JsonPropertyName("sessionId")]
@@ -6539,6 +6620,7 @@ public sealed class SlashCommandInfo
     /// <summary>Canonical command name without a leading slash.</summary>
     [JsonPropertyName("name")]
     public string Name { get; set; } = string.Empty;
+
 }
 
 /// <summary>Slash commands available in the session, after applying any include/exclude filters.</summary>
@@ -9267,7 +9349,7 @@ public sealed class RegisterEventInterestResult
 [Experimental(Diagnostics.Experimental)]
 internal sealed class RegisterEventInterestParams
 {
-    /// <summary>The event type the consumer wants the runtime to treat as 'observed' for behavior-switching gating. Some runtime code paths inspect whether any consumer is interested in a specific event type and choose a different implementation accordingly (e.g. `mcp.oauth_required`: when interest is registered the runtime delegates the full interactive OAuth flow to the consumer; when no interest is registered the runtime installs a browserless fallback that silently reuses cached tokens). SDK clients that long-poll events do NOT automatically appear as listeners to these gating checks — they must explicitly call `registerInterest` for each event type they want the runtime to count as having a consumer. Multiple registrations for the same event type from the same or different consumers are tracked independently and must each be released. See: `mcp.oauth_required`, `sampling.requested`, `auto_mode_switch.requested`, `user_input.requested`, `elicitation.requested`, `command.queued`, `exit_plan_mode.requested`.</summary>
+    /// <summary>The event type the consumer wants the runtime to treat as observed for behavior-switching gating. Multiple registrations for the same event type from the same or different consumers are tracked independently and must each be released.</summary>
     [JsonPropertyName("eventType")]
     public string EventType { get; set; } = string.Empty;
 
@@ -17507,8 +17589,8 @@ public sealed class McpOauthApi
         _session = session;
     }
 
-    /// <summary>Responds to a pending MCP OAuth provider request. Marked internal because the `provider` argument is an in-process OAuthClientProvider instance that cannot be carried over the wire; the public OAuth surface will route the response through a wire-clean handshake once the CLI moves on top of the SDK.</summary>
-    /// <param name="requestId">OAuth request identifier from mcp.oauth_required.</param>
+    /// <summary>Responds to a pending MCP OAuth request with an in-process provider. Conceptually similar to handlePendingRequest, but marked internal because this legacy CLI-only path takes a live OAuthClientProvider instance that cannot be carried over the wire. Once the CLI is replatformed on the SDK and can use handlePendingRequest, this API should be removed.</summary>
+    /// <param name="requestId">OAuth request identifier for the pending request.</param>
     /// <param name="provider">In-process OAuthClientProvider instance, or omitted to deny. Marked internal: cannot be serialized across the JSON-RPC boundary.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>Empty result after recording the MCP OAuth response.</returns>
@@ -17519,6 +17601,21 @@ public sealed class McpOauthApi
 
         var request = new McpOauthRespondRequest { SessionId = _session.SessionId, RequestId = requestId, Provider = CopilotClient.ToJsonElementForWire(provider) };
         return await CopilotClient.InvokeRpcAsync<McpOauthRespondResult>(_session.Rpc, "session.mcp.oauth.respond", [request], cancellationToken);
+    }
+
+    /// <summary>Resolves a pending MCP OAuth request with a host-provided token or cancellation.</summary>
+    /// <param name="requestId">OAuth request identifier for the pending request.</param>
+    /// <param name="result">Host response to the pending OAuth request.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>Indicates whether the pending MCP OAuth response was accepted.</returns>
+    public async Task<McpOauthHandlePendingResult> HandlePendingRequestAsync(string requestId, McpOauthPendingRequestResponse result, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(requestId);
+        ArgumentNullException.ThrowIfNull(result);
+        _session.ThrowIfDisposed();
+
+        var request = new McpOauthHandlePendingRequest { SessionId = _session.SessionId, RequestId = requestId, Result = result };
+        return await CopilotClient.InvokeRpcAsync<McpOauthHandlePendingResult>(_session.Rpc, "session.mcp.oauth.handlePendingRequest", [request], cancellationToken);
     }
 
     /// <summary>Starts OAuth authentication for a remote MCP server.</summary>
@@ -18829,7 +18926,7 @@ public sealed class EventLogApi
     }
 
     /// <summary>Registers consumer interest in an event type for runtime gating purposes.</summary>
-    /// <param name="eventType">The event type the consumer wants the runtime to treat as 'observed' for behavior-switching gating. Some runtime code paths inspect whether any consumer is interested in a specific event type and choose a different implementation accordingly (e.g. `mcp.oauth_required`: when interest is registered the runtime delegates the full interactive OAuth flow to the consumer; when no interest is registered the runtime installs a browserless fallback that silently reuses cached tokens). SDK clients that long-poll events do NOT automatically appear as listeners to these gating checks — they must explicitly call `registerInterest` for each event type they want the runtime to count as having a consumer. Multiple registrations for the same event type from the same or different consumers are tracked independently and must each be released. See: `mcp.oauth_required`, `sampling.requested`, `auto_mode_switch.requested`, `user_input.requested`, `elicitation.requested`, `command.queued`, `exit_plan_mode.requested`.</param>
+    /// <param name="eventType">The event type the consumer wants the runtime to treat as observed for behavior-switching gating. Multiple registrations for the same event type from the same or different consumers are tracked independently and must each be released.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>Opaque handle representing an event-type interest registration.</returns>
     public async Task<RegisterEventInterestResult> RegisterInterestAsync(string eventType, CancellationToken cancellationToken = default)
@@ -19269,9 +19366,11 @@ internal static class ClientSessionApiRegistration
 [JsonSerializable(typeof(GitHub.Copilot.McpAppToolCallCompleteToolMetaUI), TypeInfoPropertyName = "SessionEventsMcpAppToolCallCompleteToolMetaUI")]
 [JsonSerializable(typeof(GitHub.Copilot.McpOauthCompletedData), TypeInfoPropertyName = "SessionEventsMcpOauthCompletedData")]
 [JsonSerializable(typeof(GitHub.Copilot.McpOauthCompletedEvent), TypeInfoPropertyName = "SessionEventsMcpOauthCompletedEvent")]
+[JsonSerializable(typeof(GitHub.Copilot.McpOauthCompletedOutcome), TypeInfoPropertyName = "SessionEventsMcpOauthCompletedOutcome")]
 [JsonSerializable(typeof(GitHub.Copilot.McpOauthRequiredData), TypeInfoPropertyName = "SessionEventsMcpOauthRequiredData")]
 [JsonSerializable(typeof(GitHub.Copilot.McpOauthRequiredEvent), TypeInfoPropertyName = "SessionEventsMcpOauthRequiredEvent")]
 [JsonSerializable(typeof(GitHub.Copilot.McpOauthRequiredStaticClientConfig), TypeInfoPropertyName = "SessionEventsMcpOauthRequiredStaticClientConfig")]
+[JsonSerializable(typeof(GitHub.Copilot.McpOauthRequiredWwwAuthenticateParams), TypeInfoPropertyName = "SessionEventsMcpOauthRequiredWwwAuthenticateParams")]
 [JsonSerializable(typeof(GitHub.Copilot.McpServerSource), TypeInfoPropertyName = "SessionEventsMcpServerSource")]
 [JsonSerializable(typeof(GitHub.Copilot.McpServerStatus), TypeInfoPropertyName = "SessionEventsMcpServerStatus")]
 [JsonSerializable(typeof(GitHub.Copilot.McpServerTransport), TypeInfoPropertyName = "SessionEventsMcpServerTransport")]
@@ -19554,8 +19653,11 @@ internal static class ClientSessionApiRegistration
 [JsonSerializable(typeof(McpIsServerRunningResult))]
 [JsonSerializable(typeof(McpListToolsRequest))]
 [JsonSerializable(typeof(McpListToolsResult))]
+[JsonSerializable(typeof(McpOauthHandlePendingRequest))]
+[JsonSerializable(typeof(McpOauthHandlePendingResult))]
 [JsonSerializable(typeof(McpOauthLoginRequest))]
 [JsonSerializable(typeof(McpOauthLoginResult))]
+[JsonSerializable(typeof(McpOauthPendingRequestResponse))]
 [JsonSerializable(typeof(McpOauthRespondRequest))]
 [JsonSerializable(typeof(McpOauthRespondResult))]
 [JsonSerializable(typeof(McpRegisterExternalClientRequest))]

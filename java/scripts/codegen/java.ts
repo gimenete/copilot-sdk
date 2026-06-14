@@ -1283,7 +1283,7 @@ function generateRpcClass(
     return { code: lines.join("\n"), imports };
 }
 
-async function generateRpcTypes(schemaPath: string): Promise<void> {
+async function generateRpcTypes(schemaPath: string, sessionEventsSchemaPath: string): Promise<void> {
     console.log("\n🔌 Generating RPC types...");
     const schemaContent = await fs.readFile(schemaPath, "utf-8");
     const schema = normalizeSchemaBrandCasing(JSON.parse(schemaContent)) as Record<string, unknown> & {
@@ -1301,7 +1301,6 @@ async function generateRpcTypes(schemaPath: string): Promise<void> {
     // Load cross-schema definitions (session-events) so that cross-schema $ref values
     // like "session-events.schema.json#/definitions/Foo" can be resolved.
     try {
-        const sessionEventsSchemaPath = await getSessionEventsSchemaPath();
         const sessionEventsContent = await fs.readFile(sessionEventsSchemaPath, "utf-8");
         const sessionEventsSchema = normalizeSchemaBrandCasing(JSON.parse(sessionEventsContent) as JSONSchema7);
         crossSchemaDefinitions.set("session-events.schema.json",
@@ -2065,13 +2064,13 @@ async function main(): Promise<void> {
     await fs.rm(generatedOutputDir, { recursive: true, force: true });
     await fs.mkdir(generatedOutputDir, { recursive: true });
 
-    const sessionEventsSchemaPath = await getSessionEventsSchemaPath();
+    const sessionEventsSchemaPath = process.argv[2] ?? await getSessionEventsSchemaPath();
     console.log(`📄 Session events schema: ${sessionEventsSchemaPath}`);
-    const apiSchemaPath = await getApiSchemaPath();
+    const apiSchemaPath = process.argv[3] ?? await getApiSchemaPath();
     console.log(`📄 API schema: ${apiSchemaPath}`);
 
     await generateSessionEvents(sessionEventsSchemaPath);
-    await generateRpcTypes(apiSchemaPath);
+    await generateRpcTypes(apiSchemaPath, sessionEventsSchemaPath);
     await generateRpcWrappers(apiSchemaPath);
 
     console.log("\n✅ Java code generation complete!");

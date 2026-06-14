@@ -14,7 +14,7 @@ import com.github.copilot.CopilotExperimental;
 import javax.annotation.processing.Generated;
 
 /**
- * Event type to register consumer interest for, used by runtime gating logic.
+ * Pending MCP OAuth request ID and host-provided token or cancellation response.
  *
  * @apiNote This method is experimental and may change in a future version.
  * @since 1.0.0
@@ -23,10 +23,12 @@ import javax.annotation.processing.Generated;
 @javax.annotation.processing.Generated("copilot-sdk-codegen")
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonIgnoreProperties(ignoreUnknown = true)
-public record SessionEventLogRegisterInterestParams(
+public record SessionMcpOauthHandlePendingRequestParams(
     /** Target session identifier */
     @JsonProperty("sessionId") String sessionId,
-    /** The event type the consumer wants the runtime to treat as observed for behavior-switching gating. Multiple registrations for the same event type from the same or different consumers are tracked independently and must each be released. */
-    @JsonProperty("eventType") String eventType
+    /** OAuth request identifier for the pending request. */
+    @JsonProperty("requestId") String requestId,
+    /** Host response to the pending OAuth request. */
+    @JsonProperty("result") Object result
 ) {
 }

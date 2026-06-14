@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"sync"
 	"time"
 
@@ -61,6 +62,8 @@ type Session struct {
 	toolHandlersM         sync.RWMutex
 	permissionHandler     PermissionHandlerFunc
 	permissionMux         sync.RWMutex
+	mcpAuthHandler        MCPAuthHandler
+	mcpAuthMu             sync.RWMutex
 	userInputHandler      UserInputHandler
 	userInputMux          sync.RWMutex
 	exitPlanModeHandler   ExitPlanModeRequestHandler
@@ -863,6 +866,46 @@ func (s *Session) getElicitationHandler() ElicitationHandler {
 	return s.elicitationHandler
 }
 
+func (s *Session) registerMCPAuthHandler(handler MCPAuthHandler) {
+	s.mcpAuthMu.Lock()
+	defer s.mcpAuthMu.Unlock()
+	s.mcpAuthHandler = handler
+}
+
+func (s *Session) getMCPAuthHandler() MCPAuthHandler {
+	s.mcpAuthMu.RLock()
+	defer s.mcpAuthMu.RUnlock()
+	return s.mcpAuthHandler
+}
+
+func (s *Session) handleMCPAuthRequest(request MCPAuthRequest) {
+	handler := s.getMCPAuthHandler()
+	if handler == nil {
+		return
+	}
+
+	ctx := context.Background()
+	cancel := &rpc.MCPOauthPendingRequestResponseCancelled{}
+	result, err := handler(request, MCPAuthInvocation{SessionID: s.SessionID})
+	if err != nil || result == nil || result.Kind == "cancelled" || result.Token == nil {
+		s.RPC.MCP.Oauth().HandlePendingRequest(ctx, &rpc.MCPOauthHandlePendingRequest{
+			RequestID: request.RequestID,
+			Result:    cancel,
+		})
+		return
+	}
+
+	s.RPC.MCP.Oauth().HandlePendingRequest(ctx, &rpc.MCPOauthHandlePendingRequest{
+		RequestID: request.RequestID,
+		Result: &rpc.MCPOauthPendingRequestResponseToken{
+			AccessToken:  result.Token.AccessToken,
+			TokenType:    result.Token.TokenType,
+			RefreshToken: result.Token.RefreshToken,
+			ExpiresIn:    result.Token.ExpiresIn,
+		},
+	})
+}
+
 // handleElicitationRequest dispatches an elicitation.requested event to the registered handler
 // and sends the result back via the RPC layer. Auto-cancels on error.
 func (s *Session) handleElicitationRequest(elicitCtx ElicitationContext, requestID string) {
@@ -1308,6 +1351,50 @@ func (s *Session) handleBroadcastEvent(event SessionEvent) {
 			return
 		}
 		s.executePermissionAndRespond(d.RequestID, d.PermissionRequest, handler)
+
+	case *MCPOauthRequiredData:
+		handler := s.getMCPAuthHandler()
+		if d.RequestID == "" {
+			return
+		}
+		if handler == nil {
+			log.Printf(
+				"Received MCP OAuth request without a registered MCP auth handler. SessionId=%s, RequestId=%s",
+				s.SessionID,
+				d.RequestID,
+			)
+			return
+		}
+		var staticClientConfig *MCPAuthStaticClientConfig
+		if d.StaticClientConfig != nil {
+			var grantType string
+			if d.StaticClientConfig.GrantType != nil {
+				grantType = string(*d.StaticClientConfig.GrantType)
+			}
+			staticClientConfig = &MCPAuthStaticClientConfig{
+				ClientID:     d.StaticClientConfig.ClientID,
+				GrantType:    grantType,
+				PublicClient: d.StaticClientConfig.PublicClient,
+			}
+		}
+		var scope, oauthError string
+		if d.WwwAuthenticateParams.Scope != nil {
+			scope = *d.WwwAuthenticateParams.Scope
+		}
+		if d.WwwAuthenticateParams.Error != nil {
+			oauthError = *d.WwwAuthenticateParams.Error
+		}
+		s.handleMCPAuthRequest(MCPAuthRequest{
+			RequestID:  d.RequestID,
+			ServerName: d.ServerName,
+			ServerURL:  d.ServerURL,
+			WwwAuthenticateParams: MCPAuthWwwAuthenticateParams{
+				ResourceMetadataURL: d.WwwAuthenticateParams.ResourceMetadataURL,
+				Scope:               scope,
+				Error:               oauthError,
+			},
+			StaticClientConfig: staticClientConfig,
+		})
 
 	case *CommandExecuteData:
 		s.executeCommandAndRespond(d.RequestID, d.CommandName, d.Command, d.Args)

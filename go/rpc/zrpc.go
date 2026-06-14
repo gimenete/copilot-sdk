@@ -2426,6 +2426,73 @@ type MCPOauthLoginResult struct {
 	AuthorizationURL *string `json:"authorizationUrl,omitempty"`
 }
 
+// Pending MCP OAuth request ID and host-provided token or cancellation response.
+// Experimental: MCPOauthHandlePendingRequest is part of an experimental API and may change
+// or be removed.
+type MCPOauthHandlePendingRequest struct {
+	// OAuth request identifier for the pending request.
+	RequestID string `json:"requestId"`
+	// Host response to the pending OAuth request.
+	Result MCPOauthPendingRequestResponse `json:"result"`
+}
+
+// Indicates whether the pending MCP OAuth response was accepted.
+// Experimental: MCPOauthHandlePendingResult is part of an experimental API and may change
+// or be removed.
+type MCPOauthHandlePendingResult struct {
+	// Whether the response was accepted. False if the request was unknown, timed out, or
+	// already resolved.
+	Success bool `json:"success"`
+}
+
+// Host response to the pending OAuth request.
+// Experimental: MCPOauthPendingRequestResponse is part of an experimental API and may
+// change or be removed.
+type MCPOauthPendingRequestResponse interface {
+	mcpOauthPendingRequestResponse()
+	Kind() MCPOauthPendingRequestResponseKind
+}
+
+type RawMCPOauthPendingRequestResponseData struct {
+	Discriminator MCPOauthPendingRequestResponseKind
+	Raw           json.RawMessage
+}
+
+func (RawMCPOauthPendingRequestResponseData) mcpOauthPendingRequestResponse() {}
+func (r RawMCPOauthPendingRequestResponseData) Kind() MCPOauthPendingRequestResponseKind {
+	return r.Discriminator
+}
+
+// Schema for the `McpOauthPendingRequestResponseCancelled` type.
+// Experimental: MCPOauthPendingRequestResponseCancelled is part of an experimental API and
+// may change or be removed.
+type MCPOauthPendingRequestResponseCancelled struct {
+}
+
+func (MCPOauthPendingRequestResponseCancelled) mcpOauthPendingRequestResponse() {}
+func (MCPOauthPendingRequestResponseCancelled) Kind() MCPOauthPendingRequestResponseKind {
+	return MCPOauthPendingRequestResponseKindCancelled
+}
+
+// Schema for the `McpOauthPendingRequestResponseToken` type.
+// Experimental: MCPOauthPendingRequestResponseToken is part of an experimental API and may
+// change or be removed.
+type MCPOauthPendingRequestResponseToken struct {
+	// Access token acquired by the SDK host
+	AccessToken string `json:"accessToken"`
+	// Token lifetime in seconds, if known.
+	ExpiresIn *int64 `json:"expiresIn,omitempty"`
+	// Refresh token supplied by the host, if available.
+	RefreshToken *string `json:"refreshToken,omitempty"`
+	// OAuth token type. Defaults to Bearer when omitted.
+	TokenType *string `json:"tokenType,omitempty"`
+}
+
+func (MCPOauthPendingRequestResponseToken) mcpOauthPendingRequestResponse() {}
+func (MCPOauthPendingRequestResponseToken) Kind() MCPOauthPendingRequestResponseKind {
+	return MCPOauthPendingRequestResponseKindToken
+}
+
 // MCP OAuth request id and optional provider response.
 // Experimental: MCPOauthRespondRequest is part of an experimental API and may change or be
 // removed.
@@ -2444,6 +2511,18 @@ type MCPOauthRespondRequest struct {
 // removed.
 type MCPOauthRespondResult struct {
 }
+
+// Allowed values for the `McpOauthPendingRequestResponse` discriminator.
+// Experimental: MCPOauthPendingRequestResponseKind is part of an experimental API and may
+// change or be removed.
+type MCPOauthPendingRequestResponseKind string
+
+const (
+	// Schema for the `McpOauthPendingRequestResponseCancelled` type.
+	MCPOauthPendingRequestResponseKindCancelled MCPOauthPendingRequestResponseKind = "cancelled"
+	// Schema for the `McpOauthPendingRequestResponseToken` type.
+	MCPOauthPendingRequestResponseKindToken MCPOauthPendingRequestResponseKind = "token"
+)
 
 // Registration parameters for an external MCP client.
 // Experimental: MCPRegisterExternalClientRequest is part of an experimental API and may
@@ -12723,6 +12802,31 @@ func (s *MCPAPI) Apps() *MCPAppsAPI {
 
 // Experimental: MCPOauthAPI contains experimental APIs that may change or be removed.
 type MCPOauthAPI sessionAPI
+
+// HandlePendingRequest resolves a pending MCP OAuth request with a host-provided token or
+// cancellation.
+//
+// RPC method: session.mcp.oauth.handlePendingRequest.
+//
+// Parameters: Pending MCP OAuth request ID and host-provided token or cancellation response.
+//
+// Returns: Indicates whether the pending MCP OAuth response was accepted.
+func (a *MCPOauthAPI) HandlePendingRequest(ctx context.Context, params *MCPOauthHandlePendingRequest) (*MCPOauthHandlePendingResult, error) {
+	req := map[string]any{"sessionId": a.sessionID}
+	if params != nil {
+		req["requestId"] = params.RequestID
+		req["result"] = params.Result
+	}
+	raw, err := a.client.Request("session.mcp.oauth.handlePendingRequest", req)
+	if err != nil {
+		return nil, err
+	}
+	var result MCPOauthHandlePendingResult
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
 
 // Login starts OAuth authentication for a remote MCP server.
 //

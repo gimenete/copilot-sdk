@@ -3052,7 +3052,7 @@ public sealed partial class SamplingCompletedData
 /// <summary>OAuth authentication request for an MCP server.</summary>
 public sealed partial class McpOauthRequiredData
 {
-    /// <summary>Unique identifier for this OAuth request; used to respond via session.respondToMcpOAuth().</summary>
+    /// <summary>Unique identifier for this OAuth request; used to respond via session.mcp.oauth.handlePendingRequest.</summary>
     [JsonPropertyName("requestId")]
     public required string RequestId { get; set; }
 
@@ -3068,11 +3068,19 @@ public sealed partial class McpOauthRequiredData
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     [JsonPropertyName("staticClientConfig")]
     public McpOauthRequiredStaticClientConfig? StaticClientConfig { get; set; }
+
+    /// <summary>Parsed parameters from the WWW-Authenticate header that the SDK host uses for RFC 9728 protected-resource metadata discovery.</summary>
+    [JsonPropertyName("wwwAuthenticateParams")]
+    public required McpOauthRequiredWwwAuthenticateParams WwwAuthenticateParams { get; set; }
 }
 
 /// <summary>MCP OAuth request completion notification.</summary>
 public sealed partial class McpOauthCompletedData
 {
+    /// <summary>How the pending OAuth request was completed.</summary>
+    [JsonPropertyName("outcome")]
+    public required McpOauthCompletedOutcome Outcome { get; set; }
+
     /// <summary>Request ID of the resolved OAuth request.</summary>
     [JsonPropertyName("requestId")]
     public required string RequestId { get; set; }
@@ -5781,6 +5789,25 @@ public sealed partial class McpOauthRequiredStaticClientConfig
     public bool? PublicClient { get; set; }
 }
 
+/// <summary>Parsed parameters from the WWW-Authenticate header that the SDK host uses for RFC 9728 protected-resource metadata discovery.</summary>
+/// <remarks>Nested data type for <c>McpOauthRequiredWwwAuthenticateParams</c>.</remarks>
+public sealed partial class McpOauthRequiredWwwAuthenticateParams
+{
+    /// <summary>Parsed OAuth error from the WWW-Authenticate header, if present.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("error")]
+    public string? Error { get; set; }
+
+    /// <summary>Parsed resource_metadata URL from the WWW-Authenticate header.</summary>
+    [JsonPropertyName("resourceMetadataUrl")]
+    public required string ResourceMetadataUrl { get; set; }
+
+    /// <summary>Parsed OAuth scope from the WWW-Authenticate header, if present.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("scope")]
+    public string? Scope { get; set; }
+}
+
 /// <summary>Schema for the `CommandsChangedCommand` type.</summary>
 /// <remarks>Nested data type for <c>CommandsChangedCommand</c>.</remarks>
 public sealed partial class CommandsChangedCommand
@@ -7667,6 +7694,70 @@ public readonly struct ElicitationCompletedAction : IEquatable<ElicitationComple
     }
 }
 
+/// <summary>How the pending OAuth request was completed.</summary>
+[JsonConverter(typeof(Converter))]
+[DebuggerDisplay("{Value,nq}")]
+public readonly struct McpOauthCompletedOutcome : IEquatable<McpOauthCompletedOutcome>
+{
+    private readonly string? _value;
+
+    /// <summary>Initializes a new instance of the <see cref="McpOauthCompletedOutcome"/> struct.</summary>
+    /// <param name="value">The value to associate with this <see cref="McpOauthCompletedOutcome"/>.</param>
+    [JsonConstructor]
+    public McpOauthCompletedOutcome(string value)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(value);
+        _value = value;
+    }
+
+    /// <summary>Gets the value associated with this <see cref="McpOauthCompletedOutcome"/>.</summary>
+    public string Value => _value ?? string.Empty;
+
+    /// <summary>The pending OAuth request was resolved with a host-provided token/provider.</summary>
+    public static McpOauthCompletedOutcome Token { get; } = new("token");
+
+    /// <summary>The pending OAuth request was cancelled or declined without a token/provider.</summary>
+    public static McpOauthCompletedOutcome Cancelled { get; } = new("cancelled");
+
+    /// <summary>The pending OAuth request timed out before any client responded.</summary>
+    public static McpOauthCompletedOutcome Timeout { get; } = new("timeout");
+
+    /// <summary>Returns a value indicating whether two <see cref="McpOauthCompletedOutcome"/> instances are equivalent.</summary>
+    public static bool operator ==(McpOauthCompletedOutcome left, McpOauthCompletedOutcome right) => left.Equals(right);
+
+    /// <summary>Returns a value indicating whether two <see cref="McpOauthCompletedOutcome"/> instances are not equivalent.</summary>
+    public static bool operator !=(McpOauthCompletedOutcome left, McpOauthCompletedOutcome right) => !(left == right);
+
+    /// <inheritdoc />
+    public override bool Equals(object? obj) => obj is McpOauthCompletedOutcome other && Equals(other);
+
+    /// <inheritdoc />
+    public bool Equals(McpOauthCompletedOutcome other) => string.Equals(Value, other.Value, StringComparison.OrdinalIgnoreCase);
+
+    /// <inheritdoc />
+    public override int GetHashCode() => StringComparer.OrdinalIgnoreCase.GetHashCode(Value);
+
+    /// <inheritdoc />
+    public override string ToString() => Value;
+
+    /// <summary>Provides a <see cref="JsonConverter{McpOauthCompletedOutcome}"/> for serializing <see cref="McpOauthCompletedOutcome"/> instances.</summary>
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    public sealed class Converter : JsonConverter<McpOauthCompletedOutcome>
+    {
+        /// <inheritdoc />
+        public override McpOauthCompletedOutcome Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            return new(GeneratedStringEnumJson.ReadValue(ref reader, typeToConvert));
+        }
+
+        /// <inheritdoc />
+        public override void Write(Utf8JsonWriter writer, McpOauthCompletedOutcome value, JsonSerializerOptions options)
+        {
+            GeneratedStringEnumJson.WriteValue(writer, value.Value, typeof(McpOauthCompletedOutcome));
+        }
+    }
+}
+
 /// <summary>The user's auto-mode-switch choice.</summary>
 [JsonConverter(typeof(Converter))]
 [DebuggerDisplay("{Value,nq}")]
@@ -8368,6 +8459,7 @@ public readonly struct CanvasOpenedAvailability : IEquatable<CanvasOpenedAvailab
 [JsonSerializable(typeof(McpOauthRequiredData))]
 [JsonSerializable(typeof(McpOauthRequiredEvent))]
 [JsonSerializable(typeof(McpOauthRequiredStaticClientConfig))]
+[JsonSerializable(typeof(McpOauthRequiredWwwAuthenticateParams))]
 [JsonSerializable(typeof(McpServersLoadedServer))]
 [JsonSerializable(typeof(ModelCallFailureData))]
 [JsonSerializable(typeof(ModelCallFailureEvent))]

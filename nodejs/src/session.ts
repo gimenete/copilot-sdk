@@ -10,7 +10,11 @@
 import type { MessageConnection } from "vscode-jsonrpc/node.js";
 import { ConnectionError, ErrorCodes, ResponseError } from "vscode-jsonrpc/node.js";
 import { createSessionRpc } from "./generated/rpc.js";
-import type { ClientSessionApiHandlers, CanvasActionInvokeResult } from "./generated/rpc.js";
+import type {
+    ClientSessionApiHandlers,
+    CanvasActionInvokeResult,
+    McpOauthPendingRequestResponse,
+} from "./generated/rpc.js";
 import { type Canvas, CanvasError } from "./canvas.js";
 import type { OpenCanvasInstance } from "./generated/rpc.js";
 import { getTraceContext } from "./telemetry.js";
@@ -28,6 +32,8 @@ import type {
     ExitPlanModeResult,
     UiInputOptions,
     MessageOptions,
+    McpAuthHandler,
+    McpAuthRequest,
     PermissionHandler,
     PermissionRequest,
     ContextTier,
@@ -124,6 +130,7 @@ export class CopilotSession {
     private canvases: Map<string, Canvas> = new Map();
     private commandHandlers: Map<string, CommandHandler> = new Map();
     private permissionHandler?: PermissionHandler;
+    private mcpAuthHandler?: McpAuthHandler;
     private userInputHandler?: UserInputHandler;
     private elicitationHandler?: ElicitationHandler;
     private exitPlanModeHandler?: ExitPlanModeHandler;
@@ -151,9 +158,11 @@ export class CopilotSession {
         public readonly sessionId: string,
         private connection: MessageConnection,
         private _workspacePath?: string,
-        traceContextProvider?: TraceContextProvider
+        traceContextProvider?: TraceContextProvider,
+        options?: { mcpAuthHandler?: McpAuthHandler }
     ) {
         this.traceContextProvider = traceContextProvider;
+        this.mcpAuthHandler = options?.mcpAuthHandler;
     }
 
     /**
@@ -479,6 +488,19 @@ export class CopilotSession {
             if (this.permissionHandler) {
                 void this._executePermissionAndRespond(requestId, permissionRequest);
             }
+        } else if (event.type === "mcp.oauth_required") {
+            const data = event.data as McpAuthRequest | undefined;
+            if (!data?.requestId) {
+                return;
+            }
+            if (!this.mcpAuthHandler) {
+                console.warn(
+                    "Received MCP OAuth request without a registered MCP auth handler. " +
+                        `SessionId=${this.sessionId}, RequestId=${data.requestId}`
+                );
+                return;
+            }
+            void this._executeMcpAuthAndRespond(data);
         } else if (event.type === "command.execute") {
             const { requestId, commandName, command, args } = event.data as {
                 requestId: string;
@@ -611,6 +633,7 @@ export class CopilotSession {
             if (result.kind === "no-result") {
                 return;
             }
+
             await this.rpc.permissions.handlePendingPermissionRequest({ requestId, result });
         } catch (_error) {
             try {
@@ -625,6 +648,35 @@ export class CopilotSession {
                     throw rpcError;
                 }
                 // Connection lost or RPC error — nothing we can do
+            }
+        }
+    }
+
+    /**
+     * Executes an MCP auth handler and sends the result back via RPC.
+     * @internal
+     */
+    private async _executeMcpAuthAndRespond(request: McpAuthRequest): Promise<void> {
+        try {
+            const result = await this.mcpAuthHandler!(request, { sessionId: this.sessionId });
+            const response: McpOauthPendingRequestResponse =
+                result && "accessToken" in result
+                    ? { kind: "token", ...result }
+                    : { kind: "cancelled" };
+            await this.rpc.mcp.oauth.handlePendingRequest({
+                requestId: request.requestId,
+                result: response,
+            });
+        } catch (_error) {
+            try {
+                await this.rpc.mcp.oauth.handlePendingRequest({
+                    requestId: request.requestId,
+                    result: { kind: "cancelled" },
+                });
+            } catch (rpcError) {
+                if (!(rpcError instanceof ConnectionError || rpcError instanceof ResponseError)) {
+                    throw rpcError;
+                }
             }
         }
     }

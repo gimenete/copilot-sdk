@@ -2871,11 +2871,25 @@ pub struct McpOauthRequiredStaticClientConfig {
     pub public_client: Option<bool>,
 }
 
+/// Parsed parameters from the WWW-Authenticate header that the SDK host uses for RFC 9728 protected-resource metadata discovery.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpOauthRequiredWwwAuthenticateParams {
+    /// Parsed OAuth error from the WWW-Authenticate header, if present
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    /// Parsed resource_metadata URL from the WWW-Authenticate header
+    pub resource_metadata_url: String,
+    /// Parsed OAuth scope from the WWW-Authenticate header, if present
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scope: Option<String>,
+}
+
 /// Session event "mcp.oauth_required". OAuth authentication request for an MCP server
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct McpOauthRequiredData {
-    /// Unique identifier for this OAuth request; used to respond via session.respondToMcpOAuth()
+    /// Unique identifier for this OAuth request; used to respond via session.mcp.oauth.handlePendingRequest
     pub request_id: RequestId,
     /// Display name of the MCP server that requires OAuth
     pub server_name: String,
@@ -2884,12 +2898,16 @@ pub struct McpOauthRequiredData {
     /// Static OAuth client configuration, if the server specifies one
     #[serde(skip_serializing_if = "Option::is_none")]
     pub static_client_config: Option<McpOauthRequiredStaticClientConfig>,
+    /// Parsed parameters from the WWW-Authenticate header that the SDK host uses for RFC 9728 protected-resource metadata discovery.
+    pub www_authenticate_params: McpOauthRequiredWwwAuthenticateParams,
 }
 
 /// Session event "mcp.oauth_completed". MCP OAuth request completion notification
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct McpOauthCompletedData {
+    /// How the pending OAuth request was completed
+    pub outcome: McpOauthCompletedOutcome,
     /// Request ID of the resolved OAuth request
     pub request_id: RequestId,
 }
@@ -4230,6 +4248,24 @@ pub enum McpOauthRequiredStaticClientConfigGrantType {
     #[serde(rename = "client_credentials")]
     #[default]
     ClientCredentials,
+}
+
+/// How the pending OAuth request was completed
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum McpOauthCompletedOutcome {
+    /// The pending OAuth request was resolved with a host-provided token/provider.
+    #[serde(rename = "token")]
+    Token,
+    /// The pending OAuth request was cancelled or declined without a token/provider.
+    #[serde(rename = "cancelled")]
+    Cancelled,
+    /// The pending OAuth request timed out before any client responded.
+    #[serde(rename = "timeout")]
+    Timeout,
+    /// Unknown variant for forward compatibility.
+    #[default]
+    #[serde(other)]
+    Unknown,
 }
 
 /// The user's auto-mode-switch choice

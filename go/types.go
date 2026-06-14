@@ -309,6 +309,51 @@ type PermissionInvocation struct {
 	SessionID string
 }
 
+// MCPAuthWwwAuthenticateParams contains parsed parameters from an MCP server's WWW-Authenticate response.
+type MCPAuthWwwAuthenticateParams struct {
+	ResourceMetadataURL string `json:"resourceMetadataUrl"`
+	Scope               string `json:"scope,omitempty"`
+	Error               string `json:"error,omitempty"`
+}
+
+// MCPAuthStaticClientConfig is static OAuth client configuration supplied by an MCP server.
+type MCPAuthStaticClientConfig struct {
+	ClientID     string `json:"clientId"`
+	GrantType    string `json:"grantType,omitempty"`
+	PublicClient *bool  `json:"publicClient,omitempty"`
+}
+
+// MCPAuthRequest describes an MCP OAuth request that the SDK host can satisfy with a token.
+type MCPAuthRequest struct {
+	RequestID             string                       `json:"requestId"`
+	ServerName            string                       `json:"serverName"`
+	ServerURL             string                       `json:"serverUrl"`
+	WwwAuthenticateParams MCPAuthWwwAuthenticateParams `json:"wwwAuthenticateParams"`
+	StaticClientConfig    *MCPAuthStaticClientConfig   `json:"staticClientConfig,omitempty"`
+}
+
+// MCPAuthToken is host-provided OAuth token data for a pending MCP OAuth request.
+type MCPAuthToken struct {
+	AccessToken  string  `json:"accessToken"`
+	TokenType    *string `json:"tokenType,omitempty"`
+	RefreshToken *string `json:"refreshToken,omitempty"`
+	ExpiresIn    *int64  `json:"expiresIn,omitempty"`
+}
+
+// MCPAuthResult is the result returned by an MCP auth request handler.
+type MCPAuthResult struct {
+	Kind  string
+	Token *MCPAuthToken
+}
+
+// MCPAuthInvocation provides context about an MCP auth handler invocation.
+type MCPAuthInvocation struct {
+	SessionID string
+}
+
+// MCPAuthHandler handles MCP OAuth requests from the runtime.
+type MCPAuthHandler func(request MCPAuthRequest, invocation MCPAuthInvocation) (*MCPAuthResult, error)
+
 // UserInputRequest represents a request for user input from the agent
 type UserInputRequest struct {
 	Question      string
@@ -952,6 +997,10 @@ type SessionConfig struct {
 	// When nil, permission requests are surfaced as events and left pending for the
 	// consumer to resolve via pending permission RPCs.
 	OnPermissionRequest PermissionHandlerFunc
+	// OnMCPAuthRequest is an optional handler for MCP OAuth requests from MCP servers.
+	// When provided, the SDK can satisfy MCP server OAuth requests with host-provided
+	// token data or cancellation.
+	OnMCPAuthRequest MCPAuthHandler
 	// OnUserInputRequest is a handler for user input requests from the agent (enables ask_user tool)
 	OnUserInputRequest UserInputHandler
 	// Hooks configures hook handlers for session lifecycle events
@@ -1324,6 +1373,9 @@ type ResumeSessionConfig struct {
 	// When nil, permission requests are surfaced as events and left pending for the
 	// consumer to resolve via pending permission RPCs.
 	OnPermissionRequest PermissionHandlerFunc
+	// OnMCPAuthRequest is an optional handler for MCP OAuth requests from MCP servers.
+	// See SessionConfig.OnMCPAuthRequest.
+	OnMCPAuthRequest MCPAuthHandler
 	// OnUserInputRequest is a handler for user input requests from the agent (enables ask_user tool)
 	OnUserInputRequest UserInputHandler
 	// Hooks configures hook handlers for session lifecycle events

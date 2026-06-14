@@ -26,7 +26,7 @@ import javax.annotation.processing.Generated;
 public record SessionMcpOauthRespondParams(
     /** Target session identifier */
     @JsonProperty("sessionId") String sessionId,
-    /** OAuth request identifier from mcp.oauth_required */
+    /** OAuth request identifier for the pending request. */
     @JsonProperty("requestId") String requestId,
     /** In-process OAuthClientProvider instance, or omitted to deny. Marked internal: cannot be serialized across the JSON-RPC boundary. */
     @JsonProperty("provider") Object provider
