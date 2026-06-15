@@ -462,6 +462,72 @@ export type InstructionSourceLocation =
   /** Instructions live in plugin-provided configuration. */
   | "plugin";
 /**
+ * Logical model provider this request targets.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "LlmInferenceRequestMetadataProviderType".
+ */
+/** @experimental */
+export type LlmInferenceRequestMetadataProviderType =
+  /** GitHub Copilot CAPI. */
+  | "copilot"
+  /** OpenAI. */
+  | "openai"
+  /** Azure OpenAI. */
+  | "azure"
+  /** Anthropic. */
+  | "anthropic"
+  /** Google Gemini / Vertex. */
+  | "google"
+  /** Provider not recognised by the runtime's URL heuristics. */
+  | "other";
+/**
+ * What kind of model-layer endpoint this is.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "LlmInferenceRequestMetadataEndpointKind".
+ */
+/** @experimental */
+export type LlmInferenceRequestMetadataEndpointKind =
+  /** An inference request (chat/completions, responses, messages). */
+  | "inference"
+  /** Listing of available models. */
+  | "models-catalog"
+  /** Per-model session/auth bootstrap. */
+  | "models-session"
+  /** Per-model policy lookup. */
+  | "models-policy"
+  /** An embeddings request. */
+  | "embeddings"
+  /** Model-layer endpoint not specifically categorized. */
+  | "other";
+/**
+ * Wire API shape, when this is an inference request.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "LlmInferenceRequestMetadataWireApi".
+ */
+/** @experimental */
+export type LlmInferenceRequestMetadataWireApi =
+  /** OpenAI chat completions API. */
+  | "completions"
+  /** OpenAI responses API. */
+  | "responses"
+  /** Anthropic messages API. */
+  | "messages";
+/**
+ * Transport kind. v1 implements http only.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "LlmInferenceRequestMetadataTransport".
+ */
+/** @experimental */
+export type LlmInferenceRequestMetadataTransport =
+  /** Plain HTTP request/response, possibly with an SSE-encoded streamed body. */
+  | "http"
+  /** WebSocket connection. Not implemented in v1 of the callback wire. */
+  | "websocket";
+/**
  * Repository host type
  *
  * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
@@ -609,6 +675,17 @@ export type McpServerConfig = McpServerConfigStdio | McpServerConfigHttp;
  * via the `definition` "McpServerAuthConfig".
  */
 export type McpServerAuthConfig = boolean | McpServerAuthConfigRedirectPort;
+/**
+ * Controls if tools provided by this server can be loaded on demand via tool search (auto) or always included in the initial tool list (never)
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "McpServerConfigDeferTools".
+ */
+export type McpServerConfigDeferTools =
+  /** Tools may be deferred under certain conditions */
+  | "auto"
+  /** Tools are always included in the initial tool list, even when tool search is enabled. */
+  | "never";
 /**
  * Remote transport type. Defaults to "http" when omitted.
  *
@@ -4122,6 +4199,133 @@ export interface InstructionSource {
   projectPath?: string;
 }
 /**
+ * HTTP headers as a map from lowercased header name to a list of values. Multi-valued headers (e.g. Set-Cookie) preserve all values.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "LlmInferenceHeaders".
+ */
+/** @experimental */
+export interface LlmInferenceHeaders {
+  [k: string]: string[] | undefined;
+}
+/**
+ * Set when the SDK client could not produce a response (transport-level failure). Causes the runtime to raise an APIConnectionError; status/headers/body are ignored when error is set.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "LlmInferenceHttpRequestError".
+ */
+/** @experimental */
+export interface LlmInferenceHttpRequestError {
+  /**
+   * Human-readable failure description.
+   */
+  message: string;
+  /**
+   * Optional machine-readable error code.
+   */
+  code?: string;
+}
+/**
+ * An outbound model-layer HTTP request the runtime would otherwise have issued itself.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "LlmInferenceHttpRequestRequest".
+ */
+/** @experimental */
+export interface LlmInferenceHttpRequestRequest {
+  /**
+   * Target session identifier
+   */
+  sessionId: string;
+  /**
+   * Opaque runtime-minted id, unique per request. Useful for client-side logging.
+   */
+  requestId: string;
+  /**
+   * HTTP method, e.g. GET, POST.
+   */
+  method: string;
+  /**
+   * Absolute request URL.
+   */
+  url: string;
+  headers: LlmInferenceHeaders;
+  /**
+   * Request body as a UTF-8 string. Set when binaryBody is absent or false.
+   */
+  bodyText?: string;
+  /**
+   * Request body as base64-encoded bytes. Set instead of bodyText when the body is binary.
+   */
+  bodyBase64?: string;
+  metadata: LlmInferenceRequestMetadata;
+}
+/**
+ * Metadata describing an intercepted LLM HTTP request.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "LlmInferenceRequestMetadata".
+ */
+/** @experimental */
+export interface LlmInferenceRequestMetadata {
+  providerType: LlmInferenceRequestMetadataProviderType;
+  endpointKind: LlmInferenceRequestMetadataEndpointKind;
+  wireApi?: LlmInferenceRequestMetadataWireApi;
+  transport: LlmInferenceRequestMetadataTransport;
+  /**
+   * Model identifier, when known.
+   */
+  modelId?: string;
+}
+/**
+ * The HTTP response the runtime should treat as if it had issued the request itself.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "LlmInferenceHttpRequestResult".
+ */
+/** @experimental */
+export interface LlmInferenceHttpRequestResult {
+  /**
+   * HTTP status code returned to the runtime.
+   */
+  status: number;
+  /**
+   * Optional HTTP status text.
+   */
+  statusText?: string;
+  headers: LlmInferenceHeaders;
+  /**
+   * Response body as a UTF-8 string. Set when bodyBase64 is absent.
+   */
+  bodyText?: string;
+  /**
+   * Response body as base64-encoded bytes. Set instead of bodyText for binary responses.
+   */
+  bodyBase64?: string;
+  error?: LlmInferenceHttpRequestError;
+}
+/**
+ * No parameters. The calling connection is registered as the runtime's LLM inference provider; all subsequent model-layer HTTP requests are dispatched back to it via the llmInference client API.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "LlmInferenceSetProviderRequest".
+ */
+/** @experimental */
+export interface LlmInferenceSetProviderRequest {}
+/**
+ * Indicates whether the calling client was registered as the LLM inference provider.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "LlmInferenceSetProviderResult".
+ */
+/** @experimental */
+export interface LlmInferenceSetProviderResult {
+  /**
+   * Whether the provider was set successfully
+   */
+  success: boolean;
+}
+/**
  * Schema for the `LocalSessionMetadataValue` type.
  *
  * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
@@ -4731,6 +4935,7 @@ export interface McpServerConfigStdio {
   timeout?: number;
   oidc?: McpServerAuthConfig;
   auth?: McpServerAuthConfig;
+  deferTools?: McpServerConfigDeferTools;
   /**
    * Executable command used to start the Stdio MCP server process.
    */
@@ -4786,6 +4991,7 @@ export interface McpServerConfigHttp {
   timeout?: number;
   oidc?: McpServerAuthConfig;
   auth?: McpServerAuthConfig;
+  deferTools?: McpServerConfigDeferTools;
   /**
    * URL of the remote MCP server endpoint.
    */
@@ -13196,6 +13402,16 @@ export function createServerRpc(connection: MessageConnection) {
                 connection.sendRequest("sessionFs.setProvider", params),
         },
         /** @experimental */
+        llmInference: {
+            /**
+             * Registers an SDK client as the LLM inference callback provider.
+             *
+             * @returns Indicates whether the calling client was registered as the LLM inference provider.
+             */
+            setProvider: async (): Promise<LlmInferenceSetProviderResult> =>
+                connection.sendRequest("llmInference.setProvider", {}),
+        },
+        /** @experimental */
         sessions: {
             /**
              * Creates or resumes a local session and returns the opened session ID.
@@ -15068,10 +15284,24 @@ export interface CanvasHandler {
     invoke(params: CanvasProviderInvokeActionRequest): Promise<CanvasActionInvokeResult>;
 }
 
+/** Handler for `llmInference` client session API methods. */
+/** @experimental */
+export interface LlmInferenceHandler {
+    /**
+     * Asks the SDK client to perform a single HTTP request on the runtime's behalf and return the full response. v1 contract: request and response bodies are fully buffered before being sent over the wire. SSE responses are returned as a single buffered body which the runtime then re-parses; full streaming is a planned extension.
+     *
+     * @param params An outbound model-layer HTTP request the runtime would otherwise have issued itself.
+     *
+     * @returns The HTTP response the runtime should treat as if it had issued the request itself.
+     */
+    httpRequest(params: LlmInferenceHttpRequestRequest): Promise<LlmInferenceHttpRequestResult>;
+}
+
 /** All client session API handler groups. */
 export interface ClientSessionApiHandlers {
     sessionFs?: SessionFsHandler;
     canvas?: CanvasHandler;
+    llmInference?: LlmInferenceHandler;
 }
 
 /**
@@ -15158,5 +15388,10 @@ export function registerClientSessionApiHandlers(
         const handler = getHandlers(params.sessionId).canvas;
         if (!handler) throw new Error(`No canvas handler registered for session: ${params.sessionId}`);
         return handler.invoke(params);
+    });
+    connection.onRequest("llmInference.httpRequest", async (params: LlmInferenceHttpRequestRequest) => {
+        const handler = getHandlers(params.sessionId).llmInference;
+        if (!handler) throw new Error(`No llmInference handler registered for session: ${params.sessionId}`);
+        return handler.httpRequest(params);
     });
 }

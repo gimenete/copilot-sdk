@@ -28,6 +28,7 @@ export {
     approveAll,
     convertMcpCallToolResult,
     createSessionFsAdapter,
+    createLlmInferenceAdapter,
     SYSTEM_MESSAGE_SECTIONS,
 } from "./types.js";
 // Re-export the generated session-event types (every *Event interface and
@@ -121,6 +122,10 @@ export type {
     SessionFsSqliteQueryResult,
     SessionFsSqliteQueryType,
     SessionFsSqliteProvider,
+    LlmInferenceConfig,
+    LlmInferenceProvider,
+    LlmInferenceRequest,
+    LlmInferenceResponse,
     SystemMessageAppendConfig,
     SystemMessageConfig,
     SystemMessageCustomizeConfig,
