@@ -49,6 +49,13 @@ impl<'a> ClientRpc<'a> {
         }
     }
 
+    /// `llmInference.*` sub-namespace.
+    pub fn llm_inference(&self) -> ClientRpcLlmInference<'a> {
+        ClientRpcLlmInference {
+            client: self.client,
+        }
+    }
+
     /// `mcp.*` sub-namespace.
     pub fn mcp(&self) -> ClientRpcMcp<'a> {
         ClientRpcMcp {
@@ -316,6 +323,100 @@ impl<'a> ClientRpcInstructions<'a> {
         let _value = self
             .client
             .call(rpc_methods::INSTRUCTIONS_DISCOVER, Some(wire_params))
+            .await?;
+        Ok(serde_json::from_value(_value)?)
+    }
+}
+
+/// `llmInference.*` RPCs.
+#[derive(Clone, Copy)]
+pub struct ClientRpcLlmInference<'a> {
+    pub(crate) client: &'a Client,
+}
+
+impl<'a> ClientRpcLlmInference<'a> {
+    /// Registers an SDK client as the LLM inference callback provider.
+    ///
+    /// Wire method: `llmInference.setProvider`.
+    ///
+    /// # Returns
+    ///
+    /// Indicates whether the calling client was registered as the LLM inference provider.
+    ///
+    /// <div class="warning">
+    ///
+    /// **Experimental.** This API is part of an experimental wire-protocol surface
+    /// and may change or be removed in future SDK or CLI releases. Pin both the
+    /// SDK and CLI versions if your code depends on it.
+    ///
+    /// </div>
+    pub async fn set_provider(&self) -> Result<LlmInferenceSetProviderResult, Error> {
+        let wire_params = serde_json::json!({});
+        let _value = self
+            .client
+            .call(rpc_methods::LLMINFERENCE_SETPROVIDER, Some(wire_params))
+            .await?;
+        Ok(serde_json::from_value(_value)?)
+    }
+
+    /// Pushes a streamed response body chunk back to the runtime, correlated by the streamToken the runtime previously handed out in llmInference.httpStreamStart.
+    ///
+    /// Wire method: `llmInference.streamChunk`.
+    ///
+    /// # Parameters
+    ///
+    /// * `params` - A streamed response body chunk.
+    ///
+    /// # Returns
+    ///
+    /// Whether the chunk was accepted.
+    ///
+    /// <div class="warning">
+    ///
+    /// **Experimental.** This API is part of an experimental wire-protocol surface
+    /// and may change or be removed in future SDK or CLI releases. Pin both the
+    /// SDK and CLI versions if your code depends on it.
+    ///
+    /// </div>
+    pub async fn stream_chunk(
+        &self,
+        params: LlmInferenceStreamChunkRequest,
+    ) -> Result<LlmInferenceStreamChunkResult, Error> {
+        let wire_params = serde_json::to_value(params)?;
+        let _value = self
+            .client
+            .call(rpc_methods::LLMINFERENCE_STREAMCHUNK, Some(wire_params))
+            .await?;
+        Ok(serde_json::from_value(_value)?)
+    }
+
+    /// Signals end-of-stream for an inference response stream the SDK client started via llmInference.httpStreamStart.
+    ///
+    /// Wire method: `llmInference.streamEnd`.
+    ///
+    /// # Parameters
+    ///
+    /// * `params` - End-of-stream signal.
+    ///
+    /// # Returns
+    ///
+    /// Whether the end signal was accepted.
+    ///
+    /// <div class="warning">
+    ///
+    /// **Experimental.** This API is part of an experimental wire-protocol surface
+    /// and may change or be removed in future SDK or CLI releases. Pin both the
+    /// SDK and CLI versions if your code depends on it.
+    ///
+    /// </div>
+    pub async fn stream_end(
+        &self,
+        params: LlmInferenceStreamEndRequest,
+    ) -> Result<LlmInferenceStreamEndResult, Error> {
+        let wire_params = serde_json::to_value(params)?;
+        let _value = self
+            .client
+            .call(rpc_methods::LLMINFERENCE_STREAMEND, Some(wire_params))
             .await?;
         Ok(serde_json::from_value(_value)?)
     }

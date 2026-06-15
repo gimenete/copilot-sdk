@@ -83,6 +83,12 @@ pub mod rpc_methods {
     pub const RUNTIME_SHUTDOWN: &str = "runtime.shutdown";
     /// `sessionFs.setProvider`
     pub const SESSIONFS_SETPROVIDER: &str = "sessionFs.setProvider";
+    /// `llmInference.setProvider`
+    pub const LLMINFERENCE_SETPROVIDER: &str = "llmInference.setProvider";
+    /// `llmInference.streamChunk`
+    pub const LLMINFERENCE_STREAMCHUNK: &str = "llmInference.streamChunk";
+    /// `llmInference.streamEnd`
+    pub const LLMINFERENCE_STREAMEND: &str = "llmInference.streamEnd";
     /// `sessions.open`
     pub const SESSIONS_OPEN: &str = "sessions.open";
     /// `sessions.fork`
@@ -3165,6 +3171,223 @@ pub struct InstructionsGetSourcesResult {
     pub sources: Vec<InstructionSource>,
 }
 
+/// Set when the SDK client could not produce a response (transport-level failure). Causes the runtime to raise an APIConnectionError; status/headers/body are ignored when error is set.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LlmInferenceHttpRequestError {
+    /// Optional machine-readable error code.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub code: Option<String>,
+    /// Human-readable failure description.
+    pub message: String,
+}
+
+/// Metadata describing an intercepted LLM HTTP request.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LlmInferenceRequestMetadata {
+    /// What kind of model-layer endpoint this is.
+    pub endpoint_kind: LlmInferenceRequestMetadataEndpointKind,
+    /// Model identifier, when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_id: Option<String>,
+    /// Logical model provider this request targets.
+    pub provider_type: LlmInferenceRequestMetadataProviderType,
+    /// Transport kind. v1 implements http only.
+    pub transport: LlmInferenceRequestMetadataTransport,
+    /// Wire API shape, when this is an inference request.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wire_api: Option<LlmInferenceRequestMetadataWireApi>,
+}
+
+/// An outbound model-layer HTTP request the runtime would otherwise have issued itself.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LlmInferenceHttpRequestRequest {
+    /// Request body as base64-encoded bytes. Set instead of bodyText when the body is binary.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub body_base64: Option<String>,
+    /// Request body as a UTF-8 string. Set when binaryBody is absent or false.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub body_text: Option<String>,
+    /// HTTP headers as a map from lowercased header name to a list of values. Multi-valued headers (e.g. Set-Cookie) preserve all values.
+    pub headers: HashMap<String, Vec<String>>,
+    /// Metadata describing an intercepted LLM HTTP request.
+    pub metadata: LlmInferenceRequestMetadata,
+    /// HTTP method, e.g. GET, POST.
+    pub method: String,
+    /// Opaque runtime-minted id, unique per request. Useful for client-side logging.
+    pub request_id: RequestId,
+    /// Id of the runtime session that triggered this request, when one is in scope. Absent for requests issued outside any session (e.g. startup model-catalog or capability resolution). This is a payload field — not a dispatch key — because the client-global API is registered process-wide rather than per session.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<SessionId>,
+    /// Absolute request URL.
+    pub url: String,
+}
+
+/// The HTTP response the runtime should treat as if it had issued the request itself.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LlmInferenceHttpRequestResult {
+    /// Response body as base64-encoded bytes. Set instead of bodyText for binary responses.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub body_base64: Option<String>,
+    /// Response body as a UTF-8 string. Set when bodyBase64 is absent.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub body_text: Option<String>,
+    /// Set when the SDK client could not produce a response (transport-level failure). Causes the runtime to raise an APIConnectionError; status/headers/body are ignored when error is set.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<LlmInferenceHttpRequestError>,
+    /// HTTP headers as a map from lowercased header name to a list of values. Multi-valued headers (e.g. Set-Cookie) preserve all values.
+    pub headers: HashMap<String, Vec<String>>,
+    /// HTTP status code returned to the runtime.
+    pub status: i64,
+    /// Optional HTTP status text.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status_text: Option<String>,
+}
+
+/// Set when the SDK client could not even begin the stream (transport-level failure). When error is set the runtime raises an APIConnectionError and ignores status/headers.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LlmInferenceHttpStreamStartError {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub code: Option<String>,
+    pub message: String,
+}
+
+/// An outbound streaming model-layer HTTP request.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LlmInferenceHttpStreamStartRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub body_base64: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub body_text: Option<String>,
+    /// HTTP headers as a map from lowercased header name to a list of values. Multi-valued headers (e.g. Set-Cookie) preserve all values.
+    pub headers: HashMap<String, Vec<String>>,
+    /// Metadata describing an intercepted LLM HTTP request.
+    pub metadata: LlmInferenceRequestMetadata,
+    /// HTTP method.
+    pub method: String,
+    /// Opaque runtime-minted id, unique per request.
+    pub request_id: RequestId,
+    /// Originating session id, when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<SessionId>,
+    /// Stream identifier. The SDK client passes this exact value back on every llmInference.streamChunk / streamEnd call to correlate pushed chunks with this request.
+    pub stream_token: i64,
+    /// Absolute request URL.
+    pub url: String,
+}
+
+/// The response head. After returning, the SDK client pushes body chunks via llmInference.streamChunk and signals completion (or transport error) via llmInference.streamEnd.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LlmInferenceHttpStreamStartResult {
+    /// Set when the SDK client could not even begin the stream (transport-level failure). When error is set the runtime raises an APIConnectionError and ignores status/headers.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<LlmInferenceHttpStreamStartError>,
+    /// HTTP headers as a map from lowercased header name to a list of values. Multi-valued headers (e.g. Set-Cookie) preserve all values.
+    pub headers: HashMap<String, Vec<String>>,
+    /// HTTP status code.
+    pub status: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status_text: Option<String>,
+}
+
+/// No parameters. The calling connection is registered as the runtime's LLM inference provider; all subsequent model-layer HTTP requests are dispatched back to it via the llmInference client API.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LlmInferenceSetProviderRequest {}
+
+/// Indicates whether the calling client was registered as the LLM inference provider.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LlmInferenceSetProviderResult {
+    /// Whether the provider was set successfully
+    pub success: bool,
+}
+
+/// A streamed response body chunk.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LlmInferenceStreamChunkRequest {
+    /// One body chunk as base64-encoded bytes. Chunks are appended to the runtime's view of the response body in the order received.
+    pub data_base64: String,
+    /// The same streamToken the runtime supplied in the originating llmInference.httpStreamStart call.
+    pub stream_token: i64,
+}
+
+/// Whether the chunk was accepted.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LlmInferenceStreamChunkResult {
+    /// True when the chunk was queued for the stream; false when the stream is unknown.
+    pub accepted: bool,
+}
+
+/// End-of-stream signal.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LlmInferenceStreamEndRequest {
+    /// When set, marks the stream as ending with a transport-level error of this description. When absent the stream ends normally.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    /// The originating streamToken.
+    pub stream_token: i64,
+}
+
+/// Whether the end signal was accepted.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LlmInferenceStreamEndResult {
+    /// True when the stream was found and ended; false when unknown.
+    pub accepted: bool,
+}
+
 /// Pre-resolved working-directory context for session startup.
 ///
 /// <div class="warning">
@@ -4292,6 +4515,9 @@ pub struct McpServerConfigHttp {
     /// Set to `true` to use defaults, or provide an object with additional auth or OIDC settings.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub auth: Option<serde_json::Value>,
+    /// Controls if tools provided by this server can be loaded on demand via tool search (auto) or always included in the initial tool list (never)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub defer_tools: Option<McpServerConfigDeferTools>,
     /// Content filtering mode to apply to all tools, or a map of tool name to content filtering mode.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub filter_mapping: Option<serde_json::Value>,
@@ -4341,6 +4567,9 @@ pub struct McpServerConfigStdio {
     /// Working directory for the Stdio MCP server process.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cwd: Option<String>,
+    /// Controls if tools provided by this server can be loaded on demand via tool search (auto) or always included in the initial tool list (never)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub defer_tools: Option<McpServerConfigDeferTools>,
     /// Environment variables to pass to the Stdio MCP server process.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub env: Option<HashMap<String, String>>,
@@ -16083,6 +16312,9 @@ pub struct CanvasOpenResult {
     pub url: Option<String>,
 }
 
+/// HTTP headers as a map from lowercased header name to a list of values. Multi-valued headers (e.g. Set-Cookie) preserve all values.
+pub type LlmInferenceHeaders = HashMap<String, Vec<String>>;
+
 /// MCP CreateMessageResult payload (with optional 'tools' extension), present when action='success'. Treated as opaque at the schema layer; consumers should construct/consume it per the MCP CreateMessageResult shape.
 ///
 /// <div class="warning">
@@ -16985,6 +17217,93 @@ pub enum InstructionSourceType {
     Unknown,
 }
 
+/// What kind of model-layer endpoint this is.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum LlmInferenceRequestMetadataEndpointKind {
+    /// An inference request (chat/completions, responses, messages).
+    #[serde(rename = "inference")]
+    Inference,
+    /// Listing of available models.
+    #[serde(rename = "models-catalog")]
+    ModelsCatalog,
+    /// Per-model session/auth bootstrap.
+    #[serde(rename = "models-session")]
+    ModelsSession,
+    /// Per-model policy lookup.
+    #[serde(rename = "models-policy")]
+    ModelsPolicy,
+    /// An embeddings request.
+    #[serde(rename = "embeddings")]
+    Embeddings,
+    /// Model-layer endpoint not specifically categorized.
+    #[serde(rename = "other")]
+    Other,
+    /// Unknown variant for forward compatibility.
+    #[default]
+    #[serde(other)]
+    Unknown,
+}
+
+/// Logical model provider this request targets.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum LlmInferenceRequestMetadataProviderType {
+    /// GitHub Copilot CAPI.
+    #[serde(rename = "copilot")]
+    Copilot,
+    /// OpenAI.
+    #[serde(rename = "openai")]
+    Openai,
+    /// Azure OpenAI.
+    #[serde(rename = "azure")]
+    Azure,
+    /// Anthropic.
+    #[serde(rename = "anthropic")]
+    Anthropic,
+    /// Google Gemini / Vertex.
+    #[serde(rename = "google")]
+    Google,
+    /// Provider not recognised by the runtime's URL heuristics.
+    #[serde(rename = "other")]
+    Other,
+    /// Unknown variant for forward compatibility.
+    #[default]
+    #[serde(other)]
+    Unknown,
+}
+
+/// Transport kind. v1 implements http only.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum LlmInferenceRequestMetadataTransport {
+    /// Plain HTTP request/response, possibly with an SSE-encoded streamed body.
+    #[serde(rename = "http")]
+    Http,
+    /// WebSocket connection. Not implemented in v1 of the callback wire.
+    #[serde(rename = "websocket")]
+    Websocket,
+    /// Unknown variant for forward compatibility.
+    #[default]
+    #[serde(other)]
+    Unknown,
+}
+
+/// Wire API shape, when this is an inference request.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum LlmInferenceRequestMetadataWireApi {
+    /// OpenAI chat completions API.
+    #[serde(rename = "completions")]
+    Completions,
+    /// OpenAI responses API.
+    #[serde(rename = "responses")]
+    Responses,
+    /// Anthropic messages API.
+    #[serde(rename = "messages")]
+    Messages,
+    /// Unknown variant for forward compatibility.
+    #[default]
+    #[serde(other)]
+    Unknown,
+}
+
 /// Repository host type
 ///
 /// <div class="warning">
@@ -17245,6 +17564,21 @@ pub enum McpSamplingExecutionAction {
     /// The sampling inference was cancelled before completion.
     #[serde(rename = "cancelled")]
     Cancelled,
+    /// Unknown variant for forward compatibility.
+    #[default]
+    #[serde(other)]
+    Unknown,
+}
+
+/// Controls if tools provided by this server can be loaded on demand via tool search (auto) or always included in the initial tool list (never)
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum McpServerConfigDeferTools {
+    /// Tools may be deferred under certain conditions
+    #[serde(rename = "auto")]
+    Auto,
+    /// Tools are always included in the initial tool list, even when tool search is enabled.
+    #[serde(rename = "never")]
+    Never,
     /// Unknown variant for forward compatibility.
     #[default]
     #[serde(other)]

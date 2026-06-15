@@ -996,6 +996,59 @@ internal sealed class SessionFsSetProviderRequest
     public string SessionStatePath { get; set; } = string.Empty;
 }
 
+/// <summary>Indicates whether the calling client was registered as the LLM inference provider.</summary>
+[Experimental(Diagnostics.Experimental)]
+public sealed class LlmInferenceSetProviderResult
+{
+    /// <summary>Whether the provider was set successfully.</summary>
+    [JsonPropertyName("success")]
+    public bool Success { get; set; }
+}
+
+/// <summary>Whether the chunk was accepted.</summary>
+[Experimental(Diagnostics.Experimental)]
+public sealed class LlmInferenceStreamChunkResult
+{
+    /// <summary>True when the chunk was queued for the stream; false when the stream is unknown.</summary>
+    [JsonPropertyName("accepted")]
+    public bool Accepted { get; set; }
+}
+
+/// <summary>A streamed response body chunk.</summary>
+[Experimental(Diagnostics.Experimental)]
+internal sealed class LlmInferenceStreamChunkRequest
+{
+    /// <summary>One body chunk as base64-encoded bytes. Chunks are appended to the runtime's view of the response body in the order received.</summary>
+    [JsonPropertyName("dataBase64")]
+    public string DataBase64 { get; set; } = string.Empty;
+
+    /// <summary>The same streamToken the runtime supplied in the originating llmInference.httpStreamStart call.</summary>
+    [JsonPropertyName("streamToken")]
+    public long StreamToken { get; set; }
+}
+
+/// <summary>Whether the end signal was accepted.</summary>
+[Experimental(Diagnostics.Experimental)]
+public sealed class LlmInferenceStreamEndResult
+{
+    /// <summary>True when the stream was found and ended; false when unknown.</summary>
+    [JsonPropertyName("accepted")]
+    public bool Accepted { get; set; }
+}
+
+/// <summary>End-of-stream signal.</summary>
+[Experimental(Diagnostics.Experimental)]
+internal sealed class LlmInferenceStreamEndRequest
+{
+    /// <summary>When set, marks the stream as ending with a transport-level error of this description. When absent the stream ends normally.</summary>
+    [JsonPropertyName("error")]
+    public string? Error { get; set; }
+
+    /// <summary>The originating streamToken.</summary>
+    [JsonPropertyName("streamToken")]
+    public long StreamToken { get; set; }
+}
+
 /// <summary>Pre-resolved working-directory context for session startup.</summary>
 [Experimental(Diagnostics.Experimental)]
 public sealed class SessionContext
@@ -15616,6 +15669,12 @@ public sealed class ServerRpc
         Interlocked.CompareExchange(ref field, new(_rpc), null) ??
         field;
 
+    /// <summary>LlmInference APIs.</summary>
+    public ServerLlmInferenceApi LlmInference =>
+        field ??
+        Interlocked.CompareExchange(ref field, new(_rpc), null) ??
+        field;
+
     /// <summary>Sessions APIs.</summary>
     public ServerSessionsApi Sessions =>
         field ??
@@ -16159,6 +16218,50 @@ public sealed class ServerSessionFsApi
 
         var request = new SessionFsSetProviderRequest { InitialCwd = initialCwd, SessionStatePath = sessionStatePath, Conventions = conventions, Capabilities = capabilities };
         return await CopilotClient.InvokeRpcAsync<SessionFsSetProviderResult>(_rpc, "sessionFs.setProvider", [request], cancellationToken);
+    }
+}
+
+/// <summary>Provides server-scoped LlmInference APIs.</summary>
+[Experimental(Diagnostics.Experimental)]
+public sealed class ServerLlmInferenceApi
+{
+    private readonly JsonRpc _rpc;
+
+    internal ServerLlmInferenceApi(JsonRpc rpc)
+    {
+        _rpc = rpc;
+    }
+
+    /// <summary>Registers an SDK client as the LLM inference callback provider.</summary>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>Indicates whether the calling client was registered as the LLM inference provider.</returns>
+    public async Task<LlmInferenceSetProviderResult> SetProviderAsync(CancellationToken cancellationToken = default)
+    {
+        return await CopilotClient.InvokeRpcAsync<LlmInferenceSetProviderResult>(_rpc, "llmInference.setProvider", [], cancellationToken);
+    }
+
+    /// <summary>Pushes a streamed response body chunk back to the runtime, correlated by the streamToken the runtime previously handed out in llmInference.httpStreamStart.</summary>
+    /// <param name="streamToken">The same streamToken the runtime supplied in the originating llmInference.httpStreamStart call.</param>
+    /// <param name="dataBase64">One body chunk as base64-encoded bytes. Chunks are appended to the runtime's view of the response body in the order received.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>Whether the chunk was accepted.</returns>
+    public async Task<LlmInferenceStreamChunkResult> StreamChunkAsync(long streamToken, string dataBase64, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(dataBase64);
+
+        var request = new LlmInferenceStreamChunkRequest { StreamToken = streamToken, DataBase64 = dataBase64 };
+        return await CopilotClient.InvokeRpcAsync<LlmInferenceStreamChunkResult>(_rpc, "llmInference.streamChunk", [request], cancellationToken);
+    }
+
+    /// <summary>Signals end-of-stream for an inference response stream the SDK client started via llmInference.httpStreamStart.</summary>
+    /// <param name="streamToken">The originating streamToken.</param>
+    /// <param name="error">When set, marks the stream as ending with a transport-level error of this description. When absent the stream ends normally.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>Whether the end signal was accepted.</returns>
+    public async Task<LlmInferenceStreamEndResult> StreamEndAsync(long streamToken, string? error = null, CancellationToken cancellationToken = default)
+    {
+        var request = new LlmInferenceStreamEndRequest { StreamToken = streamToken, Error = error };
+        return await CopilotClient.InvokeRpcAsync<LlmInferenceStreamEndResult>(_rpc, "llmInference.streamEnd", [request], cancellationToken);
     }
 }
 
@@ -19924,6 +20027,11 @@ internal static class ClientSessionApiRegistration
 [JsonSerializable(typeof(InstructionSource))]
 [JsonSerializable(typeof(InstructionsDiscoverRequest))]
 [JsonSerializable(typeof(InstructionsGetSourcesResult))]
+[JsonSerializable(typeof(LlmInferenceSetProviderResult))]
+[JsonSerializable(typeof(LlmInferenceStreamChunkRequest))]
+[JsonSerializable(typeof(LlmInferenceStreamChunkResult))]
+[JsonSerializable(typeof(LlmInferenceStreamEndRequest))]
+[JsonSerializable(typeof(LlmInferenceStreamEndResult))]
 [JsonSerializable(typeof(LocalSessionMetadataValue))]
 [JsonSerializable(typeof(LogRequest))]
 [JsonSerializable(typeof(LogResult))]

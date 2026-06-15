@@ -4305,6 +4305,66 @@ export interface LlmInferenceHttpRequestResult {
   error?: LlmInferenceHttpRequestError;
 }
 /**
+ * Set when the SDK client could not even begin the stream (transport-level failure). When error is set the runtime raises an APIConnectionError and ignores status/headers.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "LlmInferenceHttpStreamStartError".
+ */
+/** @experimental */
+export interface LlmInferenceHttpStreamStartError {
+  message: string;
+  code?: string;
+}
+/**
+ * An outbound streaming model-layer HTTP request.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "LlmInferenceHttpStreamStartRequest".
+ */
+/** @experimental */
+export interface LlmInferenceHttpStreamStartRequest {
+  /**
+   * Opaque runtime-minted id, unique per request.
+   */
+  requestId: string;
+  /**
+   * Stream identifier. The SDK client passes this exact value back on every llmInference.streamChunk / streamEnd call to correlate pushed chunks with this request.
+   */
+  streamToken: number;
+  /**
+   * Originating session id, when known.
+   */
+  sessionId?: string;
+  /**
+   * HTTP method.
+   */
+  method: string;
+  /**
+   * Absolute request URL.
+   */
+  url: string;
+  headers: LlmInferenceHeaders;
+  bodyText?: string;
+  bodyBase64?: string;
+  metadata: LlmInferenceRequestMetadata;
+}
+/**
+ * The response head. After returning, the SDK client pushes body chunks via llmInference.streamChunk and signals completion (or transport error) via llmInference.streamEnd.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "LlmInferenceHttpStreamStartResult".
+ */
+/** @experimental */
+export interface LlmInferenceHttpStreamStartResult {
+  /**
+   * HTTP status code.
+   */
+  status: number;
+  statusText?: string;
+  headers: LlmInferenceHeaders;
+  error?: LlmInferenceHttpStreamStartError;
+}
+/**
  * No parameters. The calling connection is registered as the runtime's LLM inference provider; all subsequent model-layer HTTP requests are dispatched back to it via the llmInference client API.
  *
  * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
@@ -4324,6 +4384,66 @@ export interface LlmInferenceSetProviderResult {
    * Whether the provider was set successfully
    */
   success: boolean;
+}
+/**
+ * A streamed response body chunk.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "LlmInferenceStreamChunkRequest".
+ */
+/** @experimental */
+export interface LlmInferenceStreamChunkRequest {
+  /**
+   * The same streamToken the runtime supplied in the originating llmInference.httpStreamStart call.
+   */
+  streamToken: number;
+  /**
+   * One body chunk as base64-encoded bytes. Chunks are appended to the runtime's view of the response body in the order received.
+   */
+  dataBase64: string;
+}
+/**
+ * Whether the chunk was accepted.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "LlmInferenceStreamChunkResult".
+ */
+/** @experimental */
+export interface LlmInferenceStreamChunkResult {
+  /**
+   * True when the chunk was queued for the stream; false when the stream is unknown.
+   */
+  accepted: boolean;
+}
+/**
+ * End-of-stream signal.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "LlmInferenceStreamEndRequest".
+ */
+/** @experimental */
+export interface LlmInferenceStreamEndRequest {
+  /**
+   * The originating streamToken.
+   */
+  streamToken: number;
+  /**
+   * When set, marks the stream as ending with a transport-level error of this description. When absent the stream ends normally.
+   */
+  error?: string;
+}
+/**
+ * Whether the end signal was accepted.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "LlmInferenceStreamEndResult".
+ */
+/** @experimental */
+export interface LlmInferenceStreamEndResult {
+  /**
+   * True when the stream was found and ended; false when unknown.
+   */
+  accepted: boolean;
 }
 /**
  * Schema for the `LocalSessionMetadataValue` type.
@@ -13410,6 +13530,24 @@ export function createServerRpc(connection: MessageConnection) {
              */
             setProvider: async (): Promise<LlmInferenceSetProviderResult> =>
                 connection.sendRequest("llmInference.setProvider", {}),
+            /**
+             * Pushes a streamed response body chunk back to the runtime, correlated by the streamToken the runtime previously handed out in llmInference.httpStreamStart.
+             *
+             * @param params A streamed response body chunk.
+             *
+             * @returns Whether the chunk was accepted.
+             */
+            streamChunk: async (params: LlmInferenceStreamChunkRequest): Promise<LlmInferenceStreamChunkResult> =>
+                connection.sendRequest("llmInference.streamChunk", params),
+            /**
+             * Signals end-of-stream for an inference response stream the SDK client started via llmInference.httpStreamStart.
+             *
+             * @param params End-of-stream signal.
+             *
+             * @returns Whether the end signal was accepted.
+             */
+            streamEnd: async (params: LlmInferenceStreamEndRequest): Promise<LlmInferenceStreamEndResult> =>
+                connection.sendRequest("llmInference.streamEnd", params),
         },
         /** @experimental */
         sessions: {
@@ -15388,6 +15526,14 @@ export interface LlmInferenceHandler {
      * @returns The HTTP response the runtime should treat as if it had issued the request itself.
      */
     httpRequest(params: LlmInferenceHttpRequestRequest): Promise<LlmInferenceHttpRequestResult>;
+    /**
+     * Asks the SDK client to perform a streaming HTTP request on the runtime's behalf. The client returns the response head (status + headers) immediately, and pushes body chunks back to the runtime via llmInference.streamChunk / streamEnd, keyed by the same streamToken returned here.
+     *
+     * @param params An outbound streaming model-layer HTTP request.
+     *
+     * @returns The response head. After returning, the SDK client pushes body chunks via llmInference.streamChunk and signals completion (or transport error) via llmInference.streamEnd.
+     */
+    httpStreamStart(params: LlmInferenceHttpStreamStartRequest): Promise<LlmInferenceHttpStreamStartResult>;
 }
 
 /** All client global API handler groups. */
@@ -15410,5 +15556,10 @@ export function registerClientGlobalApiHandlers(
         const handler = handlers.llmInference;
         if (!handler) throw new Error("No llmInference client-global handler registered");
         return handler.httpRequest(params);
+    });
+    connection.onRequest("llmInference.httpStreamStart", async (params: LlmInferenceHttpStreamStartRequest) => {
+        const handler = handlers.llmInference;
+        if (!handler) throw new Error("No llmInference client-global handler registered");
+        return handler.httpStreamStart(params);
     });
 }

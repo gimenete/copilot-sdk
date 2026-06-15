@@ -126,6 +126,8 @@ export type {
     LlmInferenceProvider,
     LlmInferenceRequest,
     LlmInferenceResponse,
+    LlmInferenceStreamSink,
+    LlmInferenceStreamStartResponse,
     SystemMessageAppendConfig,
     SystemMessageConfig,
     SystemMessageCustomizeConfig,

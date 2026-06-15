@@ -1837,6 +1837,176 @@ type InstructionSource struct {
 	Type InstructionSourceType `json:"type"`
 }
 
+// HTTP headers as a map from lowercased header name to a list of values. Multi-valued
+// headers (e.g. Set-Cookie) preserve all values.
+type LlmInferenceHeaders map[string][]string
+
+// Set when the SDK client could not produce a response (transport-level failure). Causes
+// the runtime to raise an APIConnectionError; status/headers/body are ignored when error is
+// set.
+type LlmInferenceHTTPRequestError struct {
+	// Optional machine-readable error code.
+	Code *string `json:"code,omitempty"`
+	// Human-readable failure description.
+	Message string `json:"message"`
+}
+
+// An outbound model-layer HTTP request the runtime would otherwise have issued itself.
+type LlmInferenceHTTPRequestRequest struct {
+	// Request body as base64-encoded bytes. Set instead of bodyText when the body is binary.
+	BodyBase64 *string `json:"bodyBase64,omitempty"`
+	// Request body as a UTF-8 string. Set when binaryBody is absent or false.
+	BodyText *string `json:"bodyText,omitempty"`
+	// HTTP headers as a map from lowercased header name to a list of values. Multi-valued
+	// headers (e.g. Set-Cookie) preserve all values.
+	Headers map[string][]string `json:"headers"`
+	// Metadata describing an intercepted LLM HTTP request.
+	Metadata LlmInferenceRequestMetadata `json:"metadata"`
+	// HTTP method, e.g. GET, POST.
+	Method string `json:"method"`
+	// Opaque runtime-minted id, unique per request. Useful for client-side logging.
+	RequestID string `json:"requestId"`
+	// Id of the runtime session that triggered this request, when one is in scope. Absent for
+	// requests issued outside any session (e.g. startup model-catalog or capability
+	// resolution). This is a payload field — not a dispatch key — because the client-global API
+	// is registered process-wide rather than per session.
+	SessionID *string `json:"sessionId,omitempty"`
+	// Absolute request URL.
+	URL string `json:"url"`
+}
+
+// The HTTP response the runtime should treat as if it had issued the request itself.
+type LlmInferenceHTTPRequestResult struct {
+	// Response body as base64-encoded bytes. Set instead of bodyText for binary responses.
+	BodyBase64 *string `json:"bodyBase64,omitempty"`
+	// Response body as a UTF-8 string. Set when bodyBase64 is absent.
+	BodyText *string `json:"bodyText,omitempty"`
+	// Set when the SDK client could not produce a response (transport-level failure). Causes
+	// the runtime to raise an APIConnectionError; status/headers/body are ignored when error is
+	// set.
+	Error *LlmInferenceHTTPRequestError `json:"error,omitempty"`
+	// HTTP headers as a map from lowercased header name to a list of values. Multi-valued
+	// headers (e.g. Set-Cookie) preserve all values.
+	Headers map[string][]string `json:"headers"`
+	// HTTP status code returned to the runtime.
+	Status int64 `json:"status"`
+	// Optional HTTP status text.
+	StatusText *string `json:"statusText,omitempty"`
+}
+
+// Set when the SDK client could not even begin the stream (transport-level failure). When
+// error is set the runtime raises an APIConnectionError and ignores status/headers.
+type LlmInferenceHTTPStreamStartError struct {
+	Code    *string `json:"code,omitempty"`
+	Message string  `json:"message"`
+}
+
+// An outbound streaming model-layer HTTP request.
+type LlmInferenceHTTPStreamStartRequest struct {
+	BodyBase64 *string `json:"bodyBase64,omitempty"`
+	BodyText   *string `json:"bodyText,omitempty"`
+	// HTTP headers as a map from lowercased header name to a list of values. Multi-valued
+	// headers (e.g. Set-Cookie) preserve all values.
+	Headers map[string][]string `json:"headers"`
+	// Metadata describing an intercepted LLM HTTP request.
+	Metadata LlmInferenceRequestMetadata `json:"metadata"`
+	// HTTP method.
+	Method string `json:"method"`
+	// Opaque runtime-minted id, unique per request.
+	RequestID string `json:"requestId"`
+	// Originating session id, when known.
+	SessionID *string `json:"sessionId,omitempty"`
+	// Stream identifier. The SDK client passes this exact value back on every
+	// llmInference.streamChunk / streamEnd call to correlate pushed chunks with this request.
+	StreamToken int64 `json:"streamToken"`
+	// Absolute request URL.
+	URL string `json:"url"`
+}
+
+// The response head. After returning, the SDK client pushes body chunks via
+// llmInference.streamChunk and signals completion (or transport error) via
+// llmInference.streamEnd.
+type LlmInferenceHTTPStreamStartResult struct {
+	// Set when the SDK client could not even begin the stream (transport-level failure). When
+	// error is set the runtime raises an APIConnectionError and ignores status/headers.
+	Error *LlmInferenceHTTPStreamStartError `json:"error,omitempty"`
+	// HTTP headers as a map from lowercased header name to a list of values. Multi-valued
+	// headers (e.g. Set-Cookie) preserve all values.
+	Headers map[string][]string `json:"headers"`
+	// HTTP status code.
+	Status     int64   `json:"status"`
+	StatusText *string `json:"statusText,omitempty"`
+}
+
+// Metadata describing an intercepted LLM HTTP request.
+type LlmInferenceRequestMetadata struct {
+	// What kind of model-layer endpoint this is.
+	EndpointKind LlmInferenceRequestMetadataEndpointKind `json:"endpointKind"`
+	// Model identifier, when known.
+	ModelID *string `json:"modelId,omitempty"`
+	// Logical model provider this request targets.
+	ProviderType LlmInferenceRequestMetadataProviderType `json:"providerType"`
+	// Transport kind. v1 implements http only.
+	Transport LlmInferenceRequestMetadataTransport `json:"transport"`
+	// Wire API shape, when this is an inference request.
+	WireAPI *LlmInferenceRequestMetadataWireAPI `json:"wireApi,omitempty"`
+}
+
+// No parameters. The calling connection is registered as the runtime's LLM inference
+// provider; all subsequent model-layer HTTP requests are dispatched back to it via the
+// llmInference client API.
+// Experimental: LlmInferenceSetProviderRequest is part of an experimental API and may
+// change or be removed.
+type LlmInferenceSetProviderRequest struct {
+}
+
+// Indicates whether the calling client was registered as the LLM inference provider.
+// Experimental: LlmInferenceSetProviderResult is part of an experimental API and may change
+// or be removed.
+type LlmInferenceSetProviderResult struct {
+	// Whether the provider was set successfully
+	Success bool `json:"success"`
+}
+
+// A streamed response body chunk.
+// Experimental: LlmInferenceStreamChunkRequest is part of an experimental API and may
+// change or be removed.
+type LlmInferenceStreamChunkRequest struct {
+	// One body chunk as base64-encoded bytes. Chunks are appended to the runtime's view of the
+	// response body in the order received.
+	DataBase64 string `json:"dataBase64"`
+	// The same streamToken the runtime supplied in the originating llmInference.httpStreamStart
+	// call.
+	StreamToken int64 `json:"streamToken"`
+}
+
+// Whether the chunk was accepted.
+// Experimental: LlmInferenceStreamChunkResult is part of an experimental API and may change
+// or be removed.
+type LlmInferenceStreamChunkResult struct {
+	// True when the chunk was queued for the stream; false when the stream is unknown.
+	Accepted bool `json:"accepted"`
+}
+
+// End-of-stream signal.
+// Experimental: LlmInferenceStreamEndRequest is part of an experimental API and may change
+// or be removed.
+type LlmInferenceStreamEndRequest struct {
+	// When set, marks the stream as ending with a transport-level error of this description.
+	// When absent the stream ends normally.
+	Error *string `json:"error,omitempty"`
+	// The originating streamToken.
+	StreamToken int64 `json:"streamToken"`
+}
+
+// Whether the end signal was accepted.
+// Experimental: LlmInferenceStreamEndResult is part of an experimental API and may change
+// or be removed.
+type LlmInferenceStreamEndResult struct {
+	// True when the stream was found and ended; false when unknown.
+	Accepted bool `json:"accepted"`
+}
+
 // Schema for the `LocalSessionMetadataValue` type.
 // Experimental: LocalSessionMetadataValue is part of an experimental API and may change or
 // be removed.
@@ -2566,6 +2736,9 @@ func (RawMCPServerConfigData) mcpServerConfig() {}
 type MCPServerConfigHTTP struct {
 	// Set to `true` to use defaults, or provide an object with additional auth or OIDC settings.
 	Auth MCPServerAuthConfig `json:"auth,omitempty"`
+	// Controls if tools provided by this server can be loaded on demand via tool search (auto)
+	// or always included in the initial tool list (never)
+	DeferTools *MCPServerConfigDeferTools `json:"deferTools,omitempty"`
 	// Content filtering mode to apply to all tools, or a map of tool name to content filtering
 	// mode.
 	FilterMapping FilterMapping `json:"filterMapping,omitempty"`
@@ -2604,6 +2777,9 @@ type MCPServerConfigStdio struct {
 	Command string `json:"command"`
 	// Working directory for the Stdio MCP server process.
 	Cwd *string `json:"cwd,omitempty"`
+	// Controls if tools provided by this server can be loaded on demand via tool search (auto)
+	// or always included in the initial tool list (never)
+	DeferTools *MCPServerConfigDeferTools `json:"deferTools,omitempty"`
 	// Environment variables to pass to the Stdio MCP server process.
 	Env map[string]string `json:"env,omitzero"`
 	// Content filtering mode to apply to all tools, or a map of tool name to content filtering
@@ -9023,6 +9199,64 @@ const (
 	InstructionSourceTypeVscode InstructionSourceType = "vscode"
 )
 
+// What kind of model-layer endpoint this is.
+type LlmInferenceRequestMetadataEndpointKind string
+
+const (
+	// An embeddings request.
+	LlmInferenceRequestMetadataEndpointKindEmbeddings LlmInferenceRequestMetadataEndpointKind = "embeddings"
+	// An inference request (chat/completions, responses, messages).
+	LlmInferenceRequestMetadataEndpointKindInference LlmInferenceRequestMetadataEndpointKind = "inference"
+	// Listing of available models.
+	LlmInferenceRequestMetadataEndpointKindModelsCatalog LlmInferenceRequestMetadataEndpointKind = "models-catalog"
+	// Per-model policy lookup.
+	LlmInferenceRequestMetadataEndpointKindModelsPolicy LlmInferenceRequestMetadataEndpointKind = "models-policy"
+	// Per-model session/auth bootstrap.
+	LlmInferenceRequestMetadataEndpointKindModelsSession LlmInferenceRequestMetadataEndpointKind = "models-session"
+	// Model-layer endpoint not specifically categorized.
+	LlmInferenceRequestMetadataEndpointKindOther LlmInferenceRequestMetadataEndpointKind = "other"
+)
+
+// Logical model provider this request targets.
+type LlmInferenceRequestMetadataProviderType string
+
+const (
+	// Anthropic.
+	LlmInferenceRequestMetadataProviderTypeAnthropic LlmInferenceRequestMetadataProviderType = "anthropic"
+	// Azure OpenAI.
+	LlmInferenceRequestMetadataProviderTypeAzure LlmInferenceRequestMetadataProviderType = "azure"
+	// GitHub Copilot CAPI.
+	LlmInferenceRequestMetadataProviderTypeCopilot LlmInferenceRequestMetadataProviderType = "copilot"
+	// Google Gemini / Vertex.
+	LlmInferenceRequestMetadataProviderTypeGoogle LlmInferenceRequestMetadataProviderType = "google"
+	// OpenAI.
+	LlmInferenceRequestMetadataProviderTypeOpenai LlmInferenceRequestMetadataProviderType = "openai"
+	// Provider not recognised by the runtime's URL heuristics.
+	LlmInferenceRequestMetadataProviderTypeOther LlmInferenceRequestMetadataProviderType = "other"
+)
+
+// Transport kind. v1 implements http only.
+type LlmInferenceRequestMetadataTransport string
+
+const (
+	// Plain HTTP request/response, possibly with an SSE-encoded streamed body.
+	LlmInferenceRequestMetadataTransportHTTP LlmInferenceRequestMetadataTransport = "http"
+	// WebSocket connection. Not implemented in v1 of the callback wire.
+	LlmInferenceRequestMetadataTransportWebsocket LlmInferenceRequestMetadataTransport = "websocket"
+)
+
+// Wire API shape, when this is an inference request.
+type LlmInferenceRequestMetadataWireAPI string
+
+const (
+	// OpenAI chat completions API.
+	LlmInferenceRequestMetadataWireAPICompletions LlmInferenceRequestMetadataWireAPI = "completions"
+	// Anthropic messages API.
+	LlmInferenceRequestMetadataWireAPIMessages LlmInferenceRequestMetadataWireAPI = "messages"
+	// OpenAI responses API.
+	LlmInferenceRequestMetadataWireAPIResponses LlmInferenceRequestMetadataWireAPI = "responses"
+)
+
 // Allowed values for the `McpAppsHostContextDetailsAvailableDisplayMode` enumeration.
 // Experimental: MCPAppsHostContextDetailsAvailableDisplayMode is part of an experimental
 // API and may change or be removed.
@@ -9145,6 +9379,17 @@ const (
 	MCPSamplingExecutionActionFailure MCPSamplingExecutionAction = "failure"
 	// The sampling inference completed and produced a result.
 	MCPSamplingExecutionActionSuccess MCPSamplingExecutionAction = "success"
+)
+
+// Controls if tools provided by this server can be loaded on demand via tool search (auto)
+// or always included in the initial tool list (never)
+type MCPServerConfigDeferTools string
+
+const (
+	// Tools may be deferred under certain conditions
+	MCPServerConfigDeferToolsAuto MCPServerConfigDeferTools = "auto"
+	// Tools are always included in the initial tool list, even when tool search is enabled.
+	MCPServerConfigDeferToolsNever MCPServerConfigDeferTools = "never"
 )
 
 // OAuth grant type to use when authenticating to the remote MCP server.
@@ -10348,6 +10593,68 @@ func (a *ServerInstructionsAPI) Discover(ctx context.Context, params *Instructio
 	return &result, nil
 }
 
+// Experimental: ServerLlmInferenceAPI contains experimental APIs that may change or be
+// removed.
+type ServerLlmInferenceAPI serverAPI
+
+// SetProvider registers an SDK client as the LLM inference callback provider.
+//
+// RPC method: llmInference.setProvider.
+//
+// Returns: Indicates whether the calling client was registered as the LLM inference
+// provider.
+func (a *ServerLlmInferenceAPI) SetProvider(ctx context.Context) (*LlmInferenceSetProviderResult, error) {
+	raw, err := a.client.Request(ctx, "llmInference.setProvider", nil)
+	if err != nil {
+		return nil, err
+	}
+	var result LlmInferenceSetProviderResult
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// StreamChunk pushes a streamed response body chunk back to the runtime, correlated by the
+// streamToken the runtime previously handed out in llmInference.httpStreamStart.
+//
+// RPC method: llmInference.streamChunk.
+//
+// Parameters: A streamed response body chunk.
+//
+// Returns: Whether the chunk was accepted.
+func (a *ServerLlmInferenceAPI) StreamChunk(ctx context.Context, params *LlmInferenceStreamChunkRequest) (*LlmInferenceStreamChunkResult, error) {
+	raw, err := a.client.Request(ctx, "llmInference.streamChunk", params)
+	if err != nil {
+		return nil, err
+	}
+	var result LlmInferenceStreamChunkResult
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// StreamEnd signals end-of-stream for an inference response stream the SDK client started
+// via llmInference.httpStreamStart.
+//
+// RPC method: llmInference.streamEnd.
+//
+// Parameters: End-of-stream signal.
+//
+// Returns: Whether the end signal was accepted.
+func (a *ServerLlmInferenceAPI) StreamEnd(ctx context.Context, params *LlmInferenceStreamEndRequest) (*LlmInferenceStreamEndResult, error) {
+	raw, err := a.client.Request(ctx, "llmInference.streamEnd", params)
+	if err != nil {
+		return nil, err
+	}
+	var result LlmInferenceStreamEndResult
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
 type ServerMCPAPI serverAPI
 
 // Discovers MCP servers from user, workspace, plugin, and builtin sources.
@@ -11390,6 +11697,7 @@ type ServerRPC struct {
 	AgentRegistry *ServerAgentRegistryAPI
 	Agents        *ServerAgentsAPI
 	Instructions  *ServerInstructionsAPI
+	LlmInference  *ServerLlmInferenceAPI
 	MCP           *ServerMCPAPI
 	Models        *ServerModelsAPI
 	Plugins       *ServerPluginsAPI
@@ -11429,6 +11737,7 @@ func NewServerRPC(client *jsonrpc2.Client) *ServerRPC {
 	r.AgentRegistry = (*ServerAgentRegistryAPI)(&r.common)
 	r.Agents = (*ServerAgentsAPI)(&r.common)
 	r.Instructions = (*ServerInstructionsAPI)(&r.common)
+	r.LlmInference = (*ServerLlmInferenceAPI)(&r.common)
 	r.MCP = (*ServerMCPAPI)(&r.common)
 	r.Models = (*ServerModelsAPI)(&r.common)
 	r.Plugins = (*ServerPluginsAPI)(&r.common)
