@@ -4234,13 +4234,13 @@ export interface LlmInferenceHttpRequestError {
 /** @experimental */
 export interface LlmInferenceHttpRequestRequest {
   /**
-   * Target session identifier
-   */
-  sessionId: string;
-  /**
    * Opaque runtime-minted id, unique per request. Useful for client-side logging.
    */
   requestId: string;
+  /**
+   * Id of the runtime session that triggered this request, when one is in scope. Absent for requests issued outside any session (e.g. startup model-catalog or capability resolution). This is a payload field — not a dispatch key — because the client-global API is registered process-wide rather than per session.
+   */
+  sessionId?: string;
   /**
    * HTTP method, e.g. GET, POST.
    */
@@ -15284,24 +15284,10 @@ export interface CanvasHandler {
     invoke(params: CanvasProviderInvokeActionRequest): Promise<CanvasActionInvokeResult>;
 }
 
-/** Handler for `llmInference` client session API methods. */
-/** @experimental */
-export interface LlmInferenceHandler {
-    /**
-     * Asks the SDK client to perform a single HTTP request on the runtime's behalf and return the full response. v1 contract: request and response bodies are fully buffered before being sent over the wire. SSE responses are returned as a single buffered body which the runtime then re-parses; full streaming is a planned extension.
-     *
-     * @param params An outbound model-layer HTTP request the runtime would otherwise have issued itself.
-     *
-     * @returns The HTTP response the runtime should treat as if it had issued the request itself.
-     */
-    httpRequest(params: LlmInferenceHttpRequestRequest): Promise<LlmInferenceHttpRequestResult>;
-}
-
 /** All client session API handler groups. */
 export interface ClientSessionApiHandlers {
     sessionFs?: SessionFsHandler;
     canvas?: CanvasHandler;
-    llmInference?: LlmInferenceHandler;
 }
 
 /**
@@ -15389,9 +15375,40 @@ export function registerClientSessionApiHandlers(
         if (!handler) throw new Error(`No canvas handler registered for session: ${params.sessionId}`);
         return handler.invoke(params);
     });
+}
+
+/** Handler for `llmInference` client global API methods. */
+/** @experimental */
+export interface LlmInferenceHandler {
+    /**
+     * Asks the SDK client to perform a single HTTP request on the runtime's behalf and return the full response. v1 contract: request and response bodies are fully buffered before being sent over the wire. SSE responses are returned as a single buffered body which the runtime then re-parses; full streaming is a planned extension.
+     *
+     * @param params An outbound model-layer HTTP request the runtime would otherwise have issued itself.
+     *
+     * @returns The HTTP response the runtime should treat as if it had issued the request itself.
+     */
+    httpRequest(params: LlmInferenceHttpRequestRequest): Promise<LlmInferenceHttpRequestResult>;
+}
+
+/** All client global API handler groups. */
+export interface ClientGlobalApiHandlers {
+    llmInference?: LlmInferenceHandler;
+}
+
+/**
+ * Register client global API handlers on a JSON-RPC connection.
+ * The server calls these methods to delegate work to the client.
+ * Unlike session-scoped client APIs, these methods carry no implicit
+ * `sessionId` dispatch key — a single set of handlers serves the entire
+ * connection.
+ */
+export function registerClientGlobalApiHandlers(
+    connection: MessageConnection,
+    handlers: ClientGlobalApiHandlers,
+): void {
     connection.onRequest("llmInference.httpRequest", async (params: LlmInferenceHttpRequestRequest) => {
-        const handler = getHandlers(params.sessionId).llmInference;
-        if (!handler) throw new Error(`No llmInference handler registered for session: ${params.sessionId}`);
+        const handler = handlers.llmInference;
+        if (!handler) throw new Error("No llmInference client-global handler registered");
         return handler.httpRequest(params);
     });
 }
