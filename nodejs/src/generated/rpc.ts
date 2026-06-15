@@ -4143,32 +4143,56 @@ export interface LlmInferenceHeaders {
   [k: string]: string[] | undefined;
 }
 /**
- * Set when the SDK client could not produce a response (transport-level failure). Causes the runtime to raise an APIConnectionError; status/headers/body are ignored when error is set.
+ * A request body chunk or cancellation signal.
  *
  * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
- * via the `definition` "LlmInferenceHttpRequestError".
+ * via the `definition` "LlmInferenceHttpRequestChunkRequest".
  */
 /** @experimental */
-export interface LlmInferenceHttpRequestError {
+export interface LlmInferenceHttpRequestChunkRequest {
   /**
-   * Human-readable failure description.
+   * Matches the requestId from the originating httpRequestStart frame.
    */
-  message: string;
+  requestId: string;
   /**
-   * Optional machine-readable error code.
+   * Body byte range. UTF-8 text when `binary` is absent or false; base64-encoded bytes when `binary` is true. May be empty.
    */
-  code?: string;
+  data: string;
+  /**
+   * When true, `data` is base64-encoded bytes. When absent or false, `data` is UTF-8 text.
+   */
+  binary?: boolean;
+  /**
+   * When true, this is the final body chunk for the request. The SDK may rely on having received an end-marked chunk before treating the request body as complete.
+   */
+  end?: boolean;
+  /**
+   * When true, the runtime is cancelling the in-flight request (e.g. upstream consumer aborted). `data` is ignored. Implies end-of-request.
+   */
+  cancel?: boolean;
+  /**
+   * Optional human-readable reason for the cancellation, propagated for logging.
+   */
+  cancelReason?: string;
 }
 /**
- * An outbound model-layer HTTP request the runtime would otherwise have issued itself.
+ * Acknowledgement. The SDK is free to ignore the ack and treat chunk delivery as fire-and-forget.
  *
  * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
- * via the `definition` "LlmInferenceHttpRequestRequest".
+ * via the `definition` "LlmInferenceHttpRequestChunkResult".
  */
 /** @experimental */
-export interface LlmInferenceHttpRequestRequest {
+export interface LlmInferenceHttpRequestChunkResult {}
+/**
+ * The head of an outbound model-layer HTTP request.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "LlmInferenceHttpRequestStartRequest".
+ */
+/** @experimental */
+export interface LlmInferenceHttpRequestStartRequest {
   /**
-   * Opaque runtime-minted id, unique per request. Useful for client-side logging.
+   * Opaque runtime-minted id, unique per in-flight request. The SDK uses this to correlate httpRequestChunk frames and to address its httpResponseStart / httpResponseChunk replies back to the runtime.
    */
   requestId: string;
   /**
@@ -4184,52 +4208,25 @@ export interface LlmInferenceHttpRequestRequest {
    */
   url: string;
   headers: LlmInferenceHeaders;
-  /**
-   * Request body as a UTF-8 string. Set when the runtime sent a text body.
-   */
-  bodyText?: string;
-  /**
-   * Request body as base64-encoded bytes. Set instead of bodyText when the body is binary.
-   */
-  bodyBase64?: string;
 }
 /**
- * The HTTP response the runtime should treat as if it had issued the request itself.
+ * Acknowledgement. Returning successfully simply means the SDK accepted the start frame; it does not imply the request will succeed.
  *
  * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
- * via the `definition` "LlmInferenceHttpRequestResult".
+ * via the `definition` "LlmInferenceHttpRequestStartResult".
  */
 /** @experimental */
-export interface LlmInferenceHttpRequestResult {
-  /**
-   * HTTP status code returned to the runtime.
-   */
-  status: number;
-  /**
-   * Optional HTTP status text.
-   */
-  statusText?: string;
-  headers: LlmInferenceHeaders;
-  /**
-   * Response body as a UTF-8 string. Set when bodyBase64 is absent.
-   */
-  bodyText?: string;
-  /**
-   * Response body as base64-encoded bytes. Set instead of bodyText for binary responses.
-   */
-  bodyBase64?: string;
-  error?: LlmInferenceHttpRequestError;
-}
+export interface LlmInferenceHttpRequestStartResult {}
 /**
- * Set when the SDK client could not even begin the stream (transport-level failure). When error is set the runtime raises an APIConnectionError and ignores status/headers.
+ * Set to terminate the response with a transport-level failure. Implies end-of-stream; any further chunks for this requestId are ignored.
  *
  * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
- * via the `definition` "LlmInferenceHttpStreamStartError".
+ * via the `definition` "LlmInferenceHttpResponseChunkError".
  */
 /** @experimental */
-export interface LlmInferenceHttpStreamStartError {
+export interface LlmInferenceHttpResponseChunkError {
   /**
-   * Human-readable transport error message.
+   * Human-readable failure description.
    */
   message: string;
   /**
@@ -4238,51 +4235,56 @@ export interface LlmInferenceHttpStreamStartError {
   code?: string;
 }
 /**
- * An outbound streaming model-layer HTTP request.
+ * A response body chunk or terminal error.
  *
  * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
- * via the `definition` "LlmInferenceHttpStreamStartRequest".
+ * via the `definition` "LlmInferenceHttpResponseChunkRequest".
  */
 /** @experimental */
-export interface LlmInferenceHttpStreamStartRequest {
+export interface LlmInferenceHttpResponseChunkRequest {
   /**
-   * Opaque runtime-minted id, unique per request.
+   * Matches the requestId from the originating httpRequestStart frame.
    */
   requestId: string;
   /**
-   * Stream identifier. The SDK client passes this exact value back on every llmInference.streamChunk / streamEnd call to correlate pushed chunks with this request.
+   * Body byte range. UTF-8 text when `binary` is absent or false; base64-encoded bytes when `binary` is true. May be empty (e.g. when the response body is empty: send a single chunk with empty data and end=true).
    */
-  streamToken: number;
+  data: string;
   /**
-   * Originating session id, when known.
+   * When true, `data` is base64-encoded bytes. When absent or false, `data` is UTF-8 text.
    */
-  sessionId?: string;
+  binary?: boolean;
   /**
-   * HTTP method.
+   * When true, this is the final body chunk for the response. The runtime treats the response body as complete after receiving an end-marked chunk.
    */
-  method: string;
-  /**
-   * Absolute request URL.
-   */
-  url: string;
-  headers: LlmInferenceHeaders;
-  /**
-   * Request body as UTF-8 text. Mutually exclusive with bodyBase64.
-   */
-  bodyText?: string;
-  /**
-   * Request body as base64-encoded bytes. Mutually exclusive with bodyText.
-   */
-  bodyBase64?: string;
+  end?: boolean;
+  error?: LlmInferenceHttpResponseChunkError;
 }
 /**
- * The response head. After returning, the SDK client pushes body chunks via llmInference.streamChunk and signals completion (or transport error) via llmInference.streamEnd.
+ * Whether the chunk was accepted.
  *
  * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
- * via the `definition` "LlmInferenceHttpStreamStartResult".
+ * via the `definition` "LlmInferenceHttpResponseChunkResult".
  */
 /** @experimental */
-export interface LlmInferenceHttpStreamStartResult {
+export interface LlmInferenceHttpResponseChunkResult {
+  /**
+   * True when the chunk was matched to a pending request; false when unknown.
+   */
+  accepted: boolean;
+}
+/**
+ * Response head.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "LlmInferenceHttpResponseStartRequest".
+ */
+/** @experimental */
+export interface LlmInferenceHttpResponseStartRequest {
+  /**
+   * Matches the requestId from the originating httpRequestStart frame.
+   */
+  requestId: string;
   /**
    * HTTP status code.
    */
@@ -4292,7 +4294,19 @@ export interface LlmInferenceHttpStreamStartResult {
    */
   statusText?: string;
   headers: LlmInferenceHeaders;
-  error?: LlmInferenceHttpStreamStartError;
+}
+/**
+ * Whether the start frame was accepted.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "LlmInferenceHttpResponseStartResult".
+ */
+/** @experimental */
+export interface LlmInferenceHttpResponseStartResult {
+  /**
+   * True when the response start was matched to a pending request; false when unknown.
+   */
+  accepted: boolean;
 }
 /**
  * No parameters. The calling connection is registered as the runtime's LLM inference provider; all subsequent model-layer HTTP requests are dispatched back to it via the llmInference client API.
@@ -4314,66 +4328,6 @@ export interface LlmInferenceSetProviderResult {
    * Whether the provider was set successfully
    */
   success: boolean;
-}
-/**
- * A streamed response body chunk.
- *
- * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
- * via the `definition` "LlmInferenceStreamChunkRequest".
- */
-/** @experimental */
-export interface LlmInferenceStreamChunkRequest {
-  /**
-   * The same streamToken the runtime supplied in the originating llmInference.httpStreamStart call.
-   */
-  streamToken: number;
-  /**
-   * One body chunk as base64-encoded bytes. Chunks are appended to the runtime's view of the response body in the order received.
-   */
-  dataBase64: string;
-}
-/**
- * Whether the chunk was accepted.
- *
- * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
- * via the `definition` "LlmInferenceStreamChunkResult".
- */
-/** @experimental */
-export interface LlmInferenceStreamChunkResult {
-  /**
-   * True when the chunk was queued for the stream; false when the stream is unknown.
-   */
-  accepted: boolean;
-}
-/**
- * End-of-stream signal.
- *
- * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
- * via the `definition` "LlmInferenceStreamEndRequest".
- */
-/** @experimental */
-export interface LlmInferenceStreamEndRequest {
-  /**
-   * The originating streamToken.
-   */
-  streamToken: number;
-  /**
-   * When set, marks the stream as ending with a transport-level error of this description. When absent the stream ends normally.
-   */
-  error?: string;
-}
-/**
- * Whether the end signal was accepted.
- *
- * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
- * via the `definition` "LlmInferenceStreamEndResult".
- */
-/** @experimental */
-export interface LlmInferenceStreamEndResult {
-  /**
-   * True when the stream was found and ended; false when unknown.
-   */
-  accepted: boolean;
 }
 /**
  * Schema for the `LocalSessionMetadataValue` type.
@@ -13461,23 +13415,23 @@ export function createServerRpc(connection: MessageConnection) {
             setProvider: async (): Promise<LlmInferenceSetProviderResult> =>
                 connection.sendRequest("llmInference.setProvider", {}),
             /**
-             * Pushes a streamed response body chunk back to the runtime, correlated by the streamToken the runtime previously handed out in llmInference.httpStreamStart.
+             * Delivers the response head (status + headers) for an in-flight request, correlated by the requestId the runtime supplied in httpRequestStart. Must be called exactly once per request before any httpResponseChunk frames.
              *
-             * @param params A streamed response body chunk.
+             * @param params Response head.
+             *
+             * @returns Whether the start frame was accepted.
+             */
+            httpResponseStart: async (params: LlmInferenceHttpResponseStartRequest): Promise<LlmInferenceHttpResponseStartResult> =>
+                connection.sendRequest("llmInference.httpResponseStart", params),
+            /**
+             * Delivers a body byte range (or a terminal transport error) for an in-flight response, correlated by requestId. Set `end` true on the last chunk. When `error` is set the response terminates with a transport-level failure and the runtime raises an APIConnectionError.
+             *
+             * @param params A response body chunk or terminal error.
              *
              * @returns Whether the chunk was accepted.
              */
-            streamChunk: async (params: LlmInferenceStreamChunkRequest): Promise<LlmInferenceStreamChunkResult> =>
-                connection.sendRequest("llmInference.streamChunk", params),
-            /**
-             * Signals end-of-stream for an inference response stream the SDK client started via llmInference.httpStreamStart.
-             *
-             * @param params End-of-stream signal.
-             *
-             * @returns Whether the end signal was accepted.
-             */
-            streamEnd: async (params: LlmInferenceStreamEndRequest): Promise<LlmInferenceStreamEndResult> =>
-                connection.sendRequest("llmInference.streamEnd", params),
+            httpResponseChunk: async (params: LlmInferenceHttpResponseChunkRequest): Promise<LlmInferenceHttpResponseChunkResult> =>
+                connection.sendRequest("llmInference.httpResponseChunk", params),
         },
         /** @experimental */
         sessions: {
@@ -15449,21 +15403,21 @@ export function registerClientSessionApiHandlers(
 /** @experimental */
 export interface LlmInferenceHandler {
     /**
-     * Asks the SDK client to perform a single HTTP request on the runtime's behalf and return the full response. Request and response bodies are fully buffered before being sent over the wire.
+     * Announces an outbound model-layer HTTP request the runtime wants the SDK client to service. Carries the request head only; the body always follows as one or more httpRequestChunk frames keyed by the same requestId, even when the body is empty (a single chunk with end=true).
      *
-     * @param params An outbound model-layer HTTP request the runtime would otherwise have issued itself.
+     * @param params The head of an outbound model-layer HTTP request.
      *
-     * @returns The HTTP response the runtime should treat as if it had issued the request itself.
+     * @returns Acknowledgement. Returning successfully simply means the SDK accepted the start frame; it does not imply the request will succeed.
      */
-    httpRequest(params: LlmInferenceHttpRequestRequest): Promise<LlmInferenceHttpRequestResult>;
+    httpRequestStart(params: LlmInferenceHttpRequestStartRequest): Promise<LlmInferenceHttpRequestStartResult>;
     /**
-     * Asks the SDK client to perform a streaming HTTP request on the runtime's behalf. The client returns the response head (status + headers) immediately, and pushes body chunks back to the runtime via llmInference.streamChunk / streamEnd, keyed by the same streamToken returned here.
+     * Delivers a body byte range (or a cancellation signal) for a request previously announced via httpRequestStart, correlated by requestId. The runtime fires at least one chunk per request — when there is no body, a single chunk with empty data and end=true. Mid-stream the runtime may send a chunk with cancel=true to abort the request; the SDK then stops issuing httpResponseChunk frames and may emit a terminal httpResponseChunk with error set.
      *
-     * @param params An outbound streaming model-layer HTTP request.
+     * @param params A request body chunk or cancellation signal.
      *
-     * @returns The response head. After returning, the SDK client pushes body chunks via llmInference.streamChunk and signals completion (or transport error) via llmInference.streamEnd.
+     * @returns Acknowledgement. The SDK is free to ignore the ack and treat chunk delivery as fire-and-forget.
      */
-    httpStreamStart(params: LlmInferenceHttpStreamStartRequest): Promise<LlmInferenceHttpStreamStartResult>;
+    httpRequestChunk(params: LlmInferenceHttpRequestChunkRequest): Promise<LlmInferenceHttpRequestChunkResult>;
 }
 
 /** All client global API handler groups. */
@@ -15482,14 +15436,14 @@ export function registerClientGlobalApiHandlers(
     connection: MessageConnection,
     handlers: ClientGlobalApiHandlers,
 ): void {
-    connection.onRequest("llmInference.httpRequest", async (params: LlmInferenceHttpRequestRequest) => {
+    connection.onRequest("llmInference.httpRequestStart", async (params: LlmInferenceHttpRequestStartRequest) => {
         const handler = handlers.llmInference;
         if (!handler) throw new Error("No llmInference client-global handler registered");
-        return handler.httpRequest(params);
+        return handler.httpRequestStart(params);
     });
-    connection.onRequest("llmInference.httpStreamStart", async (params: LlmInferenceHttpStreamStartRequest) => {
+    connection.onRequest("llmInference.httpRequestChunk", async (params: LlmInferenceHttpRequestChunkRequest) => {
         const handler = handlers.llmInference;
         if (!handler) throw new Error("No llmInference client-global handler registered");
-        return handler.httpStreamStart(params);
+        return handler.httpRequestChunk(params);
     });
 }
