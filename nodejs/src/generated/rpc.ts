@@ -462,72 +462,6 @@ export type InstructionSourceLocation =
   /** Instructions live in plugin-provided configuration. */
   | "plugin";
 /**
- * Logical model provider this request targets.
- *
- * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
- * via the `definition` "LlmInferenceRequestMetadataProviderType".
- */
-/** @experimental */
-export type LlmInferenceRequestMetadataProviderType =
-  /** GitHub Copilot CAPI. */
-  | "copilot"
-  /** OpenAI. */
-  | "openai"
-  /** Azure OpenAI. */
-  | "azure"
-  /** Anthropic. */
-  | "anthropic"
-  /** Google Gemini / Vertex. */
-  | "google"
-  /** Provider not recognised by the runtime's URL heuristics. */
-  | "other";
-/**
- * What kind of model-layer endpoint this is.
- *
- * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
- * via the `definition` "LlmInferenceRequestMetadataEndpointKind".
- */
-/** @experimental */
-export type LlmInferenceRequestMetadataEndpointKind =
-  /** An inference request (chat/completions, responses, messages). */
-  | "inference"
-  /** Listing of available models. */
-  | "models-catalog"
-  /** Per-model session/auth bootstrap. */
-  | "models-session"
-  /** Per-model policy lookup. */
-  | "models-policy"
-  /** An embeddings request. */
-  | "embeddings"
-  /** Model-layer endpoint not specifically categorized. */
-  | "other";
-/**
- * Wire API shape, when this is an inference request.
- *
- * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
- * via the `definition` "LlmInferenceRequestMetadataWireApi".
- */
-/** @experimental */
-export type LlmInferenceRequestMetadataWireApi =
-  /** OpenAI chat completions API. */
-  | "completions"
-  /** OpenAI responses API. */
-  | "responses"
-  /** Anthropic messages API. */
-  | "messages";
-/**
- * Transport kind. v1 implements http only.
- *
- * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
- * via the `definition` "LlmInferenceRequestMetadataTransport".
- */
-/** @experimental */
-export type LlmInferenceRequestMetadataTransport =
-  /** Plain HTTP request/response, possibly with an SSE-encoded streamed body. */
-  | "http"
-  /** WebSocket connection. Not implemented in v1 of the callback wire. */
-  | "websocket";
-/**
  * Repository host type
  *
  * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
@@ -4251,31 +4185,13 @@ export interface LlmInferenceHttpRequestRequest {
   url: string;
   headers: LlmInferenceHeaders;
   /**
-   * Request body as a UTF-8 string. Set when binaryBody is absent or false.
+   * Request body as a UTF-8 string. Set when the runtime sent a text body.
    */
   bodyText?: string;
   /**
    * Request body as base64-encoded bytes. Set instead of bodyText when the body is binary.
    */
   bodyBase64?: string;
-  metadata: LlmInferenceRequestMetadata;
-}
-/**
- * Metadata describing an intercepted LLM HTTP request.
- *
- * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
- * via the `definition` "LlmInferenceRequestMetadata".
- */
-/** @experimental */
-export interface LlmInferenceRequestMetadata {
-  providerType: LlmInferenceRequestMetadataProviderType;
-  endpointKind: LlmInferenceRequestMetadataEndpointKind;
-  wireApi?: LlmInferenceRequestMetadataWireApi;
-  transport: LlmInferenceRequestMetadataTransport;
-  /**
-   * Model identifier, when known.
-   */
-  modelId?: string;
 }
 /**
  * The HTTP response the runtime should treat as if it had issued the request itself.
@@ -4312,7 +4228,13 @@ export interface LlmInferenceHttpRequestResult {
  */
 /** @experimental */
 export interface LlmInferenceHttpStreamStartError {
+  /**
+   * Human-readable transport error message.
+   */
   message: string;
+  /**
+   * Optional machine-readable error code.
+   */
   code?: string;
 }
 /**
@@ -4344,9 +4266,14 @@ export interface LlmInferenceHttpStreamStartRequest {
    */
   url: string;
   headers: LlmInferenceHeaders;
+  /**
+   * Request body as UTF-8 text. Mutually exclusive with bodyBase64.
+   */
   bodyText?: string;
+  /**
+   * Request body as base64-encoded bytes. Mutually exclusive with bodyText.
+   */
   bodyBase64?: string;
-  metadata: LlmInferenceRequestMetadata;
 }
 /**
  * The response head. After returning, the SDK client pushes body chunks via llmInference.streamChunk and signals completion (or transport error) via llmInference.streamEnd.
@@ -4360,6 +4287,9 @@ export interface LlmInferenceHttpStreamStartResult {
    * HTTP status code.
    */
   status: number;
+  /**
+   * Optional HTTP status reason phrase.
+   */
   statusText?: string;
   headers: LlmInferenceHeaders;
   error?: LlmInferenceHttpStreamStartError;
@@ -15519,7 +15449,7 @@ export function registerClientSessionApiHandlers(
 /** @experimental */
 export interface LlmInferenceHandler {
     /**
-     * Asks the SDK client to perform a single HTTP request on the runtime's behalf and return the full response. v1 contract: request and response bodies are fully buffered before being sent over the wire. SSE responses are returned as a single buffered body which the runtime then re-parses; full streaming is a planned extension.
+     * Asks the SDK client to perform a single HTTP request on the runtime's behalf and return the full response. Request and response bodies are fully buffered before being sent over the wire.
      *
      * @param params An outbound model-layer HTTP request the runtime would otherwise have issued itself.
      *
