@@ -29,6 +29,8 @@ export {
     convertMcpCallToolResult,
     createSessionFsAdapter,
     createLlmInferenceAdapter,
+    LlmRequestHandler,
+    wrapGlobalWebSocket,
     SYSTEM_MESSAGE_SECTIONS,
 } from "./types.js";
 // Re-export the generated session-event types (every *Event interface and
@@ -127,6 +129,8 @@ export type {
     LlmInferenceRequest,
     LlmInferenceResponseInit,
     LlmInferenceResponseSink,
+    LlmRequestContext,
+    LlmWebSocketUpstream,
     SystemMessageAppendConfig,
     SystemMessageConfig,
     SystemMessageCustomizeConfig,
