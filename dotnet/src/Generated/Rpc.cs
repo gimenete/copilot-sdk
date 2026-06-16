@@ -1005,48 +1005,81 @@ public sealed class LlmInferenceSetProviderResult
     public bool Success { get; set; }
 }
 
+/// <summary>Whether the start frame was accepted.</summary>
+[Experimental(Diagnostics.Experimental)]
+public sealed class LlmInferenceHttpResponseStartResult
+{
+    /// <summary>True when the response start was matched to a pending request; false when unknown.</summary>
+    [JsonPropertyName("accepted")]
+    public bool Accepted { get; set; }
+}
+
+/// <summary>Response head.</summary>
+[Experimental(Diagnostics.Experimental)]
+internal sealed class LlmInferenceHttpResponseStartRequest
+{
+    /// <summary>HTTP headers as a map from lowercased header name to a list of values. Multi-valued headers (e.g. Set-Cookie) preserve all values.</summary>
+    [JsonPropertyName("headers")]
+    public IDictionary<string, IList<string>> Headers { get => field ??= new Dictionary<string, IList<string>>(); set; }
+
+    /// <summary>Matches the requestId from the originating httpRequestStart frame.</summary>
+    [JsonPropertyName("requestId")]
+    public string RequestId { get; set; } = string.Empty;
+
+    /// <summary>HTTP status code.</summary>
+    [JsonPropertyName("status")]
+    public long Status { get; set; }
+
+    /// <summary>Optional HTTP status reason phrase.</summary>
+    [JsonPropertyName("statusText")]
+    public string? StatusText { get; set; }
+}
+
 /// <summary>Whether the chunk was accepted.</summary>
 [Experimental(Diagnostics.Experimental)]
-public sealed class LlmInferenceStreamChunkResult
+public sealed class LlmInferenceHttpResponseChunkResult
 {
-    /// <summary>True when the chunk was queued for the stream; false when the stream is unknown.</summary>
+    /// <summary>True when the chunk was matched to a pending request; false when unknown.</summary>
     [JsonPropertyName("accepted")]
     public bool Accepted { get; set; }
 }
 
-/// <summary>A streamed response body chunk.</summary>
+/// <summary>Set to terminate the response with a transport-level failure. Implies end-of-stream; any further chunks for this requestId are ignored.</summary>
 [Experimental(Diagnostics.Experimental)]
-internal sealed class LlmInferenceStreamChunkRequest
+public sealed class LlmInferenceHttpResponseChunkError
 {
-    /// <summary>One body chunk as base64-encoded bytes. Chunks are appended to the runtime's view of the response body in the order received.</summary>
-    [JsonPropertyName("dataBase64")]
-    public string DataBase64 { get; set; } = string.Empty;
+    /// <summary>Optional machine-readable error code.</summary>
+    [JsonPropertyName("code")]
+    public string? Code { get; set; }
 
-    /// <summary>The same streamToken the runtime supplied in the originating llmInference.httpStreamStart call.</summary>
-    [JsonPropertyName("streamToken")]
-    public long StreamToken { get; set; }
+    /// <summary>Human-readable failure description.</summary>
+    [JsonPropertyName("message")]
+    public string Message { get; set; } = string.Empty;
 }
 
-/// <summary>Whether the end signal was accepted.</summary>
+/// <summary>A response body chunk or terminal error.</summary>
 [Experimental(Diagnostics.Experimental)]
-public sealed class LlmInferenceStreamEndResult
+internal sealed class LlmInferenceHttpResponseChunkRequest
 {
-    /// <summary>True when the stream was found and ended; false when unknown.</summary>
-    [JsonPropertyName("accepted")]
-    public bool Accepted { get; set; }
-}
+    /// <summary>When true, `data` is base64-encoded bytes. When absent or false, `data` is UTF-8 text.</summary>
+    [JsonPropertyName("binary")]
+    public bool? Binary { get; set; }
 
-/// <summary>End-of-stream signal.</summary>
-[Experimental(Diagnostics.Experimental)]
-internal sealed class LlmInferenceStreamEndRequest
-{
-    /// <summary>When set, marks the stream as ending with a transport-level error of this description. When absent the stream ends normally.</summary>
+    /// <summary>Body byte range. UTF-8 text when `binary` is absent or false; base64-encoded bytes when `binary` is true. May be empty (e.g. when the response body is empty: send a single chunk with empty data and end=true).</summary>
+    [JsonPropertyName("data")]
+    public string Data { get; set; } = string.Empty;
+
+    /// <summary>When true, this is the final body chunk for the response. The runtime treats the response body as complete after receiving an end-marked chunk.</summary>
+    [JsonPropertyName("end")]
+    public bool? End { get; set; }
+
+    /// <summary>Set to terminate the response with a transport-level failure. Implies end-of-stream; any further chunks for this requestId are ignored.</summary>
     [JsonPropertyName("error")]
-    public string? Error { get; set; }
+    public LlmInferenceHttpResponseChunkError? Error { get; set; }
 
-    /// <summary>The originating streamToken.</summary>
-    [JsonPropertyName("streamToken")]
-    public long StreamToken { get; set; }
+    /// <summary>Matches the requestId from the originating httpRequestStart frame.</summary>
+    [JsonPropertyName("requestId")]
+    public string RequestId { get; set; } = string.Empty;
 }
 
 /// <summary>Pre-resolved working-directory context for session startup.</summary>
@@ -10268,6 +10301,76 @@ public sealed class CanvasProviderInvokeActionRequest
     public string SessionId { get; set; } = string.Empty;
 }
 
+/// <summary>Acknowledgement. Returning successfully simply means the SDK accepted the start frame; it does not imply the request will succeed.</summary>
+[Experimental(Diagnostics.Experimental)]
+public sealed class LlmInferenceHttpRequestStartResult
+{
+}
+
+/// <summary>The head of an outbound model-layer HTTP request.</summary>
+[Experimental(Diagnostics.Experimental)]
+public sealed class LlmInferenceHttpRequestStartRequest
+{
+    /// <summary>HTTP headers as a map from lowercased header name to a list of values. Multi-valued headers (e.g. Set-Cookie) preserve all values.</summary>
+    [JsonPropertyName("headers")]
+    public IDictionary<string, IList<string>> Headers { get => field ??= new Dictionary<string, IList<string>>(); set; }
+
+    /// <summary>HTTP method, e.g. GET, POST.</summary>
+    [JsonPropertyName("method")]
+    public string Method { get; set; } = string.Empty;
+
+    /// <summary>Opaque runtime-minted id, unique per in-flight request. The SDK uses this to correlate httpRequestChunk frames and to address its httpResponseStart / httpResponseChunk replies back to the runtime.</summary>
+    [JsonPropertyName("requestId")]
+    public string RequestId { get; set; } = string.Empty;
+
+    /// <summary>Id of the runtime session that triggered this request, when one is in scope. Absent for requests issued outside any session (e.g. startup model-catalog or capability resolution). This is a payload field — not a dispatch key — because the client-global API is registered process-wide rather than per session.</summary>
+    [JsonPropertyName("sessionId")]
+    public string? SessionId { get; set; }
+
+    /// <summary>Transport the runtime would otherwise use for this request. `http` (the default when absent) covers plain HTTP and SSE responses; `websocket` indicates a full-duplex message channel where each body chunk maps to one WebSocket message and the `binary` flag distinguishes text from binary frames. The SDK consumer uses this to decide whether to service the request with an HTTP client or a WebSocket client. It is the one piece of request metadata the consumer cannot reliably infer from the URL or headers alone.</summary>
+    [JsonPropertyName("transport")]
+    public LlmInferenceHttpRequestStartTransport? Transport { get; set; }
+
+    /// <summary>Absolute request URL.</summary>
+    [JsonPropertyName("url")]
+    public string Url { get; set; } = string.Empty;
+}
+
+/// <summary>Acknowledgement. The SDK is free to ignore the ack and treat chunk delivery as fire-and-forget.</summary>
+[Experimental(Diagnostics.Experimental)]
+public sealed class LlmInferenceHttpRequestChunkResult
+{
+}
+
+/// <summary>A request body chunk or cancellation signal.</summary>
+[Experimental(Diagnostics.Experimental)]
+public sealed class LlmInferenceHttpRequestChunkRequest
+{
+    /// <summary>When true, `data` is base64-encoded bytes. When absent or false, `data` is UTF-8 text.</summary>
+    [JsonPropertyName("binary")]
+    public bool? Binary { get; set; }
+
+    /// <summary>When true, the runtime is cancelling the in-flight request (e.g. upstream consumer aborted). `data` is ignored. Implies end-of-request.</summary>
+    [JsonPropertyName("cancel")]
+    public bool? Cancel { get; set; }
+
+    /// <summary>Optional human-readable reason for the cancellation, propagated for logging.</summary>
+    [JsonPropertyName("cancelReason")]
+    public string? CancelReason { get; set; }
+
+    /// <summary>Body byte range. UTF-8 text when `binary` is absent or false; base64-encoded bytes when `binary` is true. May be empty.</summary>
+    [JsonPropertyName("data")]
+    public string Data { get; set; } = string.Empty;
+
+    /// <summary>When true, this is the final body chunk for the request. The SDK may rely on having received an end-marked chunk before treating the request body as complete.</summary>
+    [JsonPropertyName("end")]
+    public bool? End { get; set; }
+
+    /// <summary>Matches the requestId from the originating httpRequestStart frame.</summary>
+    [JsonPropertyName("requestId")]
+    public string RequestId { get; set; } = string.Empty;
+}
+
 /// <summary>Model capability category for grouping in the model picker.</summary>
 [JsonConverter(typeof(Converter))]
 [DebuggerDisplay("{Value,nq}")]
@@ -15567,6 +15670,69 @@ public readonly struct SessionFsSqliteQueryType : IEquatable<SessionFsSqliteQuer
 }
 
 
+/// <summary>Transport the runtime would otherwise use for this request. `http` (the default when absent) covers plain HTTP and SSE responses; `websocket` indicates a full-duplex message channel where each body chunk maps to one WebSocket message and the `binary` flag distinguishes text from binary frames. The SDK consumer uses this to decide whether to service the request with an HTTP client or a WebSocket client. It is the one piece of request metadata the consumer cannot reliably infer from the URL or headers alone.</summary>
+[Experimental(Diagnostics.Experimental)]
+[JsonConverter(typeof(Converter))]
+[DebuggerDisplay("{Value,nq}")]
+public readonly struct LlmInferenceHttpRequestStartTransport : IEquatable<LlmInferenceHttpRequestStartTransport>
+{
+    private readonly string? _value;
+
+    /// <summary>Initializes a new instance of the <see cref="LlmInferenceHttpRequestStartTransport"/> struct.</summary>
+    /// <param name="value">The value to associate with this <see cref="LlmInferenceHttpRequestStartTransport"/>.</param>
+    [JsonConstructor]
+    public LlmInferenceHttpRequestStartTransport(string value)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(value);
+        _value = value;
+    }
+
+    /// <summary>Gets the value associated with this <see cref="LlmInferenceHttpRequestStartTransport"/>.</summary>
+    public string Value => _value ?? string.Empty;
+
+    /// <summary>Plain HTTP or SSE response. Each body chunk is an opaque byte range; the response is a status line, headers, and a (possibly streamed) body.</summary>
+    public static LlmInferenceHttpRequestStartTransport Http { get; } = new("http");
+
+    /// <summary>Full-duplex WebSocket channel. Each body chunk maps to exactly one WebSocket message and the `binary` flag distinguishes text from binary frames; request and response chunks flow concurrently.</summary>
+    public static LlmInferenceHttpRequestStartTransport Websocket { get; } = new("websocket");
+
+    /// <summary>Returns a value indicating whether two <see cref="LlmInferenceHttpRequestStartTransport"/> instances are equivalent.</summary>
+    public static bool operator ==(LlmInferenceHttpRequestStartTransport left, LlmInferenceHttpRequestStartTransport right) => left.Equals(right);
+
+    /// <summary>Returns a value indicating whether two <see cref="LlmInferenceHttpRequestStartTransport"/> instances are not equivalent.</summary>
+    public static bool operator !=(LlmInferenceHttpRequestStartTransport left, LlmInferenceHttpRequestStartTransport right) => !(left == right);
+
+    /// <inheritdoc />
+    public override bool Equals(object? obj) => obj is LlmInferenceHttpRequestStartTransport other && Equals(other);
+
+    /// <inheritdoc />
+    public bool Equals(LlmInferenceHttpRequestStartTransport other) => string.Equals(Value, other.Value, StringComparison.OrdinalIgnoreCase);
+
+    /// <inheritdoc />
+    public override int GetHashCode() => StringComparer.OrdinalIgnoreCase.GetHashCode(Value);
+
+    /// <inheritdoc />
+    public override string ToString() => Value;
+
+    /// <summary>Provides a <see cref="JsonConverter{LlmInferenceHttpRequestStartTransport}"/> for serializing <see cref="LlmInferenceHttpRequestStartTransport"/> instances.</summary>
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    public sealed class Converter : JsonConverter<LlmInferenceHttpRequestStartTransport>
+    {
+        /// <inheritdoc />
+        public override LlmInferenceHttpRequestStartTransport Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            return new(GeneratedStringEnumJson.ReadValue(ref reader, typeToConvert));
+        }
+
+        /// <inheritdoc />
+        public override void Write(Utf8JsonWriter writer, LlmInferenceHttpRequestStartTransport value, JsonSerializerOptions options)
+        {
+            GeneratedStringEnumJson.WriteValue(writer, value.Value, typeof(LlmInferenceHttpRequestStartTransport));
+        }
+    }
+}
+
+
 /// <summary>Provides server-scoped RPC methods (no session required).</summary>
 public sealed class ServerRpc
 {
@@ -16240,28 +16406,37 @@ public sealed class ServerLlmInferenceApi
         return await CopilotClient.InvokeRpcAsync<LlmInferenceSetProviderResult>(_rpc, "llmInference.setProvider", [], cancellationToken);
     }
 
-    /// <summary>Pushes a streamed response body chunk back to the runtime, correlated by the streamToken the runtime previously handed out in llmInference.httpStreamStart.</summary>
-    /// <param name="streamToken">The same streamToken the runtime supplied in the originating llmInference.httpStreamStart call.</param>
-    /// <param name="dataBase64">One body chunk as base64-encoded bytes. Chunks are appended to the runtime's view of the response body in the order received.</param>
+    /// <summary>Delivers the response head (status + headers) for an in-flight request, correlated by the requestId the runtime supplied in httpRequestStart. Must be called exactly once per request before any httpResponseChunk frames.</summary>
+    /// <param name="requestId">Matches the requestId from the originating httpRequestStart frame.</param>
+    /// <param name="status">HTTP status code.</param>
+    /// <param name="headers">HTTP headers as a map from lowercased header name to a list of values. Multi-valued headers (e.g. Set-Cookie) preserve all values.</param>
+    /// <param name="statusText">Optional HTTP status reason phrase.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
-    /// <returns>Whether the chunk was accepted.</returns>
-    public async Task<LlmInferenceStreamChunkResult> StreamChunkAsync(long streamToken, string dataBase64, CancellationToken cancellationToken = default)
+    /// <returns>Whether the start frame was accepted.</returns>
+    public async Task<LlmInferenceHttpResponseStartResult> HttpResponseStartAsync(string requestId, long status, IDictionary<string, IList<string>> headers, string? statusText = null, CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(dataBase64);
+        ArgumentNullException.ThrowIfNull(requestId);
+        ArgumentNullException.ThrowIfNull(headers);
 
-        var request = new LlmInferenceStreamChunkRequest { StreamToken = streamToken, DataBase64 = dataBase64 };
-        return await CopilotClient.InvokeRpcAsync<LlmInferenceStreamChunkResult>(_rpc, "llmInference.streamChunk", [request], cancellationToken);
+        var request = new LlmInferenceHttpResponseStartRequest { RequestId = requestId, Status = status, Headers = headers, StatusText = statusText };
+        return await CopilotClient.InvokeRpcAsync<LlmInferenceHttpResponseStartResult>(_rpc, "llmInference.httpResponseStart", [request], cancellationToken);
     }
 
-    /// <summary>Signals end-of-stream for an inference response stream the SDK client started via llmInference.httpStreamStart.</summary>
-    /// <param name="streamToken">The originating streamToken.</param>
-    /// <param name="error">When set, marks the stream as ending with a transport-level error of this description. When absent the stream ends normally.</param>
+    /// <summary>Delivers a body byte range (or a terminal transport error) for an in-flight response, correlated by requestId. Set `end` true on the last chunk. When `error` is set the response terminates with a transport-level failure and the runtime raises an APIConnectionError.</summary>
+    /// <param name="requestId">Matches the requestId from the originating httpRequestStart frame.</param>
+    /// <param name="data">Body byte range. UTF-8 text when `binary` is absent or false; base64-encoded bytes when `binary` is true. May be empty (e.g. when the response body is empty: send a single chunk with empty data and end=true).</param>
+    /// <param name="binary">When true, `data` is base64-encoded bytes. When absent or false, `data` is UTF-8 text.</param>
+    /// <param name="end">When true, this is the final body chunk for the response. The runtime treats the response body as complete after receiving an end-marked chunk.</param>
+    /// <param name="error">Set to terminate the response with a transport-level failure. Implies end-of-stream; any further chunks for this requestId are ignored.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
-    /// <returns>Whether the end signal was accepted.</returns>
-    public async Task<LlmInferenceStreamEndResult> StreamEndAsync(long streamToken, string? error = null, CancellationToken cancellationToken = default)
+    /// <returns>Whether the chunk was accepted.</returns>
+    public async Task<LlmInferenceHttpResponseChunkResult> HttpResponseChunkAsync(string requestId, string data, bool? binary = null, bool? end = null, LlmInferenceHttpResponseChunkError? error = null, CancellationToken cancellationToken = default)
     {
-        var request = new LlmInferenceStreamEndRequest { StreamToken = streamToken, Error = error };
-        return await CopilotClient.InvokeRpcAsync<LlmInferenceStreamEndResult>(_rpc, "llmInference.streamEnd", [request], cancellationToken);
+        ArgumentNullException.ThrowIfNull(requestId);
+        ArgumentNullException.ThrowIfNull(data);
+
+        var request = new LlmInferenceHttpResponseChunkRequest { RequestId = requestId, Data = data, Binary = binary, End = end, Error = error };
+        return await CopilotClient.InvokeRpcAsync<LlmInferenceHttpResponseChunkResult>(_rpc, "llmInference.httpResponseChunk", [request], cancellationToken);
     }
 }
 
@@ -19676,6 +19851,53 @@ internal static class ClientSessionApiRegistration
     }
 }
 
+/// <summary>Handles `llmInference` client global API methods.</summary>
+[Experimental(Diagnostics.Experimental)]
+public interface ILlmInferenceHandler
+{
+    /// <summary>Announces an outbound model-layer HTTP request the runtime wants the SDK client to service. Carries the request head only; the body always follows as one or more httpRequestChunk frames keyed by the same requestId, even when the body is empty (a single chunk with end=true).</summary>
+    /// <param name="request">The head of an outbound model-layer HTTP request.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>Acknowledgement. Returning successfully simply means the SDK accepted the start frame; it does not imply the request will succeed.</returns>
+    Task<LlmInferenceHttpRequestStartResult> HttpRequestStartAsync(LlmInferenceHttpRequestStartRequest request, CancellationToken cancellationToken = default);
+    /// <summary>Delivers a body byte range (or a cancellation signal) for a request previously announced via httpRequestStart, correlated by requestId. The runtime fires at least one chunk per request — when there is no body, a single chunk with empty data and end=true. Mid-stream the runtime may send a chunk with cancel=true to abort the request; the SDK then stops issuing httpResponseChunk frames and may emit a terminal httpResponseChunk with error set.</summary>
+    /// <param name="request">A request body chunk or cancellation signal.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>Acknowledgement. The SDK is free to ignore the ack and treat chunk delivery as fire-and-forget.</returns>
+    Task<LlmInferenceHttpRequestChunkResult> HttpRequestChunkAsync(LlmInferenceHttpRequestChunkRequest request, CancellationToken cancellationToken = default);
+}
+
+/// <summary>Provides all client global API handler groups for a connection.</summary>
+public sealed class ClientGlobalApiHandlers
+{
+    /// <summary>Optional handler for LlmInference client global API methods.</summary>
+    public ILlmInferenceHandler? LlmInference { get; set; }
+}
+
+/// <summary>Registers client global API handlers on a JSON-RPC connection.</summary>
+internal static class ClientGlobalApiRegistration
+{
+    /// <summary>
+    /// Registers handlers for server-to-client global API calls.
+    /// Unlike client session APIs, these methods carry no implicit
+    /// <c>sessionId</c> dispatch key — a single set of handlers serves the
+    /// entire connection.
+    /// </summary>
+    public static void RegisterClientGlobalApiHandlers(JsonRpc rpc, ClientGlobalApiHandlers handlers)
+    {
+        rpc.SetLocalRpcMethod("llmInference.httpRequestStart", (Func<LlmInferenceHttpRequestStartRequest, CancellationToken, ValueTask<LlmInferenceHttpRequestStartResult>>)(async (request, cancellationToken) =>
+        {
+            var handler = handlers.LlmInference ?? throw new InvalidOperationException("No llmInference client-global handler registered");
+            return await handler.HttpRequestStartAsync(request, cancellationToken);
+        }), singleObjectParam: true);
+        rpc.SetLocalRpcMethod("llmInference.httpRequestChunk", (Func<LlmInferenceHttpRequestChunkRequest, CancellationToken, ValueTask<LlmInferenceHttpRequestChunkResult>>)(async (request, cancellationToken) =>
+        {
+            var handler = handlers.LlmInference ?? throw new InvalidOperationException("No llmInference client-global handler registered");
+            return await handler.HttpRequestChunkAsync(request, cancellationToken);
+        }), singleObjectParam: true);
+    }
+}
+
 [JsonSourceGenerationOptions(
     JsonSerializerDefaults.Web,
     AllowOutOfOrderMetadataProperties = true,
@@ -20027,11 +20249,16 @@ internal static class ClientSessionApiRegistration
 [JsonSerializable(typeof(InstructionSource))]
 [JsonSerializable(typeof(InstructionsDiscoverRequest))]
 [JsonSerializable(typeof(InstructionsGetSourcesResult))]
+[JsonSerializable(typeof(LlmInferenceHttpRequestChunkRequest))]
+[JsonSerializable(typeof(LlmInferenceHttpRequestChunkResult))]
+[JsonSerializable(typeof(LlmInferenceHttpRequestStartRequest))]
+[JsonSerializable(typeof(LlmInferenceHttpRequestStartResult))]
+[JsonSerializable(typeof(LlmInferenceHttpResponseChunkError))]
+[JsonSerializable(typeof(LlmInferenceHttpResponseChunkRequest))]
+[JsonSerializable(typeof(LlmInferenceHttpResponseChunkResult))]
+[JsonSerializable(typeof(LlmInferenceHttpResponseStartRequest))]
+[JsonSerializable(typeof(LlmInferenceHttpResponseStartResult))]
 [JsonSerializable(typeof(LlmInferenceSetProviderResult))]
-[JsonSerializable(typeof(LlmInferenceStreamChunkRequest))]
-[JsonSerializable(typeof(LlmInferenceStreamChunkResult))]
-[JsonSerializable(typeof(LlmInferenceStreamEndRequest))]
-[JsonSerializable(typeof(LlmInferenceStreamEndResult))]
 [JsonSerializable(typeof(LocalSessionMetadataValue))]
 [JsonSerializable(typeof(LogRequest))]
 [JsonSerializable(typeof(LogResult))]
