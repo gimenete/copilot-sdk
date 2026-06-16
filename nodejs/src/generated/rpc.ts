@@ -462,6 +462,18 @@ export type InstructionSourceLocation =
   /** Instructions live in plugin-provided configuration. */
   | "plugin";
 /**
+ * Transport the runtime would otherwise use for this request. `http` (the default when absent) covers plain HTTP and SSE responses; `websocket` indicates a full-duplex message channel where each body chunk maps to one WebSocket message and the `binary` flag distinguishes text from binary frames. The SDK consumer uses this to decide whether to service the request with an HTTP client or a WebSocket client. It is the one piece of request metadata the consumer cannot reliably infer from the URL or headers alone.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "LlmInferenceHttpRequestStartTransport".
+ */
+/** @experimental */
+export type LlmInferenceHttpRequestStartTransport =
+  /** Plain HTTP or SSE response. Each body chunk is an opaque byte range; the response is a status line, headers, and a (possibly streamed) body. */
+  | "http"
+  /** Full-duplex WebSocket channel. Each body chunk maps to exactly one WebSocket message and the `binary` flag distinguishes text from binary frames; request and response chunks flow concurrently. */
+  | "websocket";
+/**
  * Repository host type
  *
  * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
@@ -4208,6 +4220,7 @@ export interface LlmInferenceHttpRequestStartRequest {
    */
   url: string;
   headers: LlmInferenceHeaders;
+  transport?: LlmInferenceHttpRequestStartTransport;
 }
 /**
  * Acknowledgement. Returning successfully simply means the SDK accepted the start frame; it does not imply the request will succeed.
